@@ -1,0 +1,149 @@
+name: Deploy TMS DEV
+
+on:
+  push:
+    branches:
+      - dev
+
+  workflow_dispatch:
+
+jobs:
+  deploy-dev:
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+      - development
+
+    steps:
+      # 1. Checkout latest DEV branch
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      # 2. Verify Docker
+      - name: Verify Docker
+        shell: powershell
+        run: |
+          docker --version
+          docker version
+          docker compose version
+
+      # 3. Verify Docker is running
+      - name: Verify Docker Engine
+        shell: powershell
+        run: |
+          docker info
+
+      # 4. Verify environment file on server
+      - name: Verify environment file
+        shell: powershell
+        run: |
+          $envFile = ""
+
+          if (-not (Test-Path $envFile)) {
+              throw "Environment file not found: $envFile"
+          }
+
+          Write-Host "Environment file found."
+
+      # 5. Copy server .env into checked-out project
+      - name: Prepare environment file
+        shell: powershell
+        run: |
+          Copy-Item `
+            "C:\TMS\Config\.env" `
+            ".\.env" `
+            -Force
+
+          Write-Host "Environment file copied to project."
+
+      # 6. Verify PORT from environment
+      - name: Verify application port
+        shell: powershell
+        run: |
+          $portLine = Get-Content ".\.env" |
+            Where-Object { $_ -match "^PORT=" }
+
+          if (-not $portLine) {
+              throw "PORT is not defined in .env"
+          }
+
+          Write-Host "PORT configuration found."
+
+      # 7. Build and deploy Docker container
+      - name: Build and deploy DEV
+        shell: powershell
+        run: |
+          docker compose `
+            -p tms-dev `
+            -f docker-compose.yml `
+            up -d `
+            --build `
+            --force-recreate `
+            --remove-orphans
+
+      # 8. Show running containers
+      - name: Show running containers
+        shell: powershell
+        run: |
+          docker ps
+
+      # 9. Health check
+      - name: Application health check
+        shell: powershell
+        run: |
+
+          $portLine = Get-Content ".\.env" |
+            Where-Object { $_ -match "^PORT=" }
+
+          $port = ($portLine -split "=", 2)[1].Trim()
+
+          $url = "http://localhost:$port/docs"
+
+          Write-Host "Health check URL: $url"
+
+          $maximumAttempts = 12
+          $applicationReady = $false
+
+          for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++) {
+
+              Write-Host "Health check attempt $attempt"
+
+              try {
+
+                  $response = Invoke-WebRequest `
+                    -Uri $url `
+                    -UseBasicParsing `
+                    -TimeoutSec 10
+
+                  if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) {
+
+                      Write-Host "Application is ready."
+
+                      $applicationReady = $true
+                      break
+                  }
+              }
+              catch {
+
+                  Write-Host "Application is not ready yet."
+              }
+
+              Start-Sleep -Seconds 10
+          }
+
+          if (-not $applicationReady) {
+              throw "Application health check failed."
+          }
+
+      # 10. Show logs
+      - name: Show container logs
+        if: always()
+        shell: powershell
+        run: |
+          docker compose `
+            -p tms-dev `
+            -f docker-compose.yml `
+            logs --tail 100

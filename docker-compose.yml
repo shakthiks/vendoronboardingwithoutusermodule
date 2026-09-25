@@ -1,0 +1,12 @@
+version: '3.11.9'
+
+services:
+  vendor-portal:
+    build: .
+    container_name: vendor_portal
+    ports:
+      - '${PORT}:${PORT}'
+      # - '8080:8080'
+    env_file:
+      - .env
+    restart: always

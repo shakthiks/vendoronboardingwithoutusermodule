@@ -1,4 +1,4 @@
-name: Deploy TMS DEV
+name: Deploy vendorreevaluation DEV
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
           docker version
           docker compose version
 
-      # 3. Verify Docker is running
+      # 3. Verify Docker Engine
       - name: Verify Docker Engine
         shell: powershell
         run: |
@@ -40,7 +40,7 @@ jobs:
       - name: Verify environment file
         shell: powershell
         run: |
-          $envFile = ""
+          $envFile = "C:\Users\sharpsys\Desktop\Vendorportaldevcloudversion\Vendoradmin-onboarding\.env"
 
           if (-not (Test-Path $envFile)) {
               throw "Environment file not found: $envFile"
@@ -53,7 +53,7 @@ jobs:
         shell: powershell
         run: |
           Copy-Item `
-            "C:\TMS\Config\.env" `
+            "C:\Users\sharpsys\Desktop\Vendorportaldevcloudversion\Vendoradmin-onboarding\.env" `
             ".\.env" `
             -Force
 
@@ -70,7 +70,9 @@ jobs:
               throw "PORT is not defined in .env"
           }
 
-          Write-Host "PORT configuration found."
+          $port = ($portLine -split "=", 2)[1].Trim()
+
+          Write-Host "Application PORT: $port"
 
       # 7. Build and deploy Docker container
       - name: Build and deploy DEV
@@ -138,7 +140,7 @@ jobs:
               throw "Application health check failed."
           }
 
-      # 10. Show logs
+      # 10. Show container logs
       - name: Show container logs
         if: always()
         shell: powershell

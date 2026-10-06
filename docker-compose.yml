@@ -1,12 +1,30 @@
-version: '3.11.9'
-
 services:
   vendor-portal:
-    build: .
-    container_name: vendor_portal
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: vendor-portal-dev:latest
+
+    container_name: vendor_portal_dev
+
     ports:
       - '${PORT}:${PORT}'
-      # - '8080:8080'
+
     env_file:
       - .env
-    restart: always
+
+    restart: unless-stopped
+
+# version: '3.11.9'
+
+# services:
+#   vendor-portal:
+#     build: .
+#     container_name: vendor_portal
+#     ports:
+#       - '${PORT}:${PORT}'
+#       # - '8080:8080'
+#     env_file:
+#       - .env
+#     restart: always

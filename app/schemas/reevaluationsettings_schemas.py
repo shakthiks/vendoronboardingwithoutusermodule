@@ -72,7 +72,9 @@ class UpdateCCRecipientRequest(BaseModel):
 
     modified_by: str
 
-
+class RemoveCCRecipientRequest(BaseModel):
+    cc_master_id: int
+    modified_by: str
 # ============================================================
 # EMAIL TEMPLATE
 # ============================================================

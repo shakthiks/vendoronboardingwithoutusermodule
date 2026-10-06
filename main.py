@@ -37,6 +37,7 @@ from app.api.routes.termslastest_router import router as termlastest_router
 
 from app.api.routes.reevalution_router import router as reevalaution_router
 from app.api.routes.Initatereevalution_router import router as intiate_router
+from app.api.routes.reevalutaionsettings_router import router as settings_router
 app=FastAPI(title="Welcome to vendor Admin portal")
 app.add_middleware(
     CORSMiddleware,
@@ -81,6 +82,7 @@ app.include_router(term_router)
 app.include_router(termlastest_router) 
 app.include_router(reevalaution_router) 
 app.include_router(intiate_router)
+app.include_router(settings_router)
 @app.get("/health")
 def health():
     return {"status": "Running"}

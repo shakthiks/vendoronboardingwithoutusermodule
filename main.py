@@ -33,7 +33,10 @@ from app.api.routes.approvalreview_router import router as approvalreview_router
 from app.api.routes.riskassesment_router import router as riskassesment_router
 from app.api.routes.vendgroupdropdown_router import router as vendgroupdropdown_router
 from app.api.routes.term_router import router as term_router
-from app.api.routes.termslastest_router import router as termlastest_router
+from app.api.routes.termslastest_router import router as termlastest_router 
+
+from app.api.routes.reevalution_router import router as reevalaution_router
+from app.api.routes.Initatereevalution_router import router as intiate_router
 app=FastAPI(title="Welcome to vendor Admin portal")
 app.add_middleware(
     CORSMiddleware,
@@ -75,7 +78,9 @@ app.include_router(vendorapproval_router)
 app.include_router(approvalreview_router)
 app.include_router(vendgroupdropdown_router)
 app.include_router(term_router)
-app.include_router(termlastest_router)
+app.include_router(termlastest_router) 
+app.include_router(reevalaution_router) 
+app.include_router(intiate_router)
 @app.get("/health")
 def health():
     return {"status": "Running"}

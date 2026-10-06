@@ -11,6 +11,7 @@ from app.schemas.reevaluationsettings_schemas import (
     AddCCRecipientRequest,
     UpdateCCRecipientRequest,
     UpdateEmailTemplateRequest,
+    RemoveCCRecipientRequest
 )
 
 from app.services.reevalutionsetting_service import (
@@ -20,6 +21,7 @@ from app.services.reevalutionsetting_service import (
     add_cc_recipient,
     update_cc_recipient,
     update_email_template,
+    remove_cc_recipient
 )
 
 
@@ -94,7 +96,14 @@ async def change_recipient(
     )
 
 
+@router.post("/recipients/remove")
+async def remove_recipient(
+    payload: RemoveCCRecipientRequest,
+):
 
+    return await remove_cc_recipient(
+        payload
+    )
 
 # ============================================================
 # SAVE / UPDATE DEFAULT EMAIL TEMPLATE

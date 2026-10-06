@@ -1026,7 +1026,87 @@ async def update_cc_recipient(
         payload,
     )
 
+# ============================================================
+# REMOVE / INACTIVATE EMAIL RECIPIENT
+# ============================================================
 
+def remove_cc_recipient_sync(payload):
+
+    with get_connection() as conn:
+
+        cursor = conn.cursor()
+
+        try:
+
+            cursor.execute(
+                f"""
+                UPDATE {CC_MASTER_TABLE}
+
+                SET
+                    IsActive = 0,
+
+                    ModifiedAt = SYSDATETIME(),
+
+                    ModifiedBy = ?
+
+                WHERE
+                    CCMasterId = ?
+
+                    AND IsActive = 1;
+                """,
+
+                payload.modified_by,
+
+                payload.cc_master_id,
+            )
+
+
+            if cursor.rowcount == 0:
+
+                conn.rollback()
+
+                return {
+                    "status": False,
+                    "message":
+                        "Active email recipient not found."
+                }
+
+
+            conn.commit()
+
+
+            return {
+                "status": True,
+                "message":
+                    "Email recipient removed successfully.",
+                "data": {
+                    "cc_master_id":
+                        payload.cc_master_id,
+
+                    "is_active":
+                        False,
+                },
+            }
+
+
+        except Exception:
+
+            conn.rollback()
+
+            raise
+
+
+        finally:
+
+            cursor.close()
+
+
+async def remove_cc_recipient(payload):
+
+    return await run_in_threadpool(
+        remove_cc_recipient_sync,
+        payload,
+    )
 # ============================================================
 # UPDATE EMAIL TEMPLATE
 # ============================================================

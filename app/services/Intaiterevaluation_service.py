@@ -72,17 +72,38 @@ def _row_to_dict(
 # ============================================================
 # EMAIL PLACEHOLDER REPLACEMENT
 # ============================================================
-
 def build_vendor_email(
     subject_template: str,
     body_template: str,
     vendor_name: str,
+    reevaluation_id: int,
     reevaluation_no: str,
     vendor_account: str,
 ) -> tuple[str, str]:
 
     subject = subject_template or ""
     body = body_template or ""
+
+    # ========================================================
+    # FRONTEND URL FROM ENV
+    # ========================================================
+
+    frontend_url = (
+        settings.ONBOARDING_FRONTEND_URL
+        .strip()
+        .rstrip("/")
+    )
+
+    # Adjust this frontend route if your React route differs
+    reevaluation_link = (
+        f"{frontend_url}"
+        f"/vendor-reevaluation"
+        f"?reevaluationId={reevaluation_id}"
+    )
+
+    # ========================================================
+    # TEMPLATE PLACEHOLDERS
+    # ========================================================
 
     replacements = {
         "[Vendor Name]":
@@ -93,18 +114,24 @@ def build_vendor_email(
 
         "[Vendor Account]":
             vendor_account or "",
+
+        "[Document Upload Link]":
+            reevaluation_link,
+
+        "[Company Name]":
+            "Hi-Q Electronics",
     }
 
     for placeholder, value in replacements.items():
 
         subject = subject.replace(
             placeholder,
-            value,
+            str(value),
         )
 
         body = body.replace(
             placeholder,
-            value,
+            str(value),
         )
 
     return subject, body
@@ -1130,30 +1157,15 @@ def initiate_vendor_reevaluation_sync(
                     # ==========================================
                     # BUILD FINAL EMAIL
                     # ==========================================
-
-                    subject, body = (
-                        build_vendor_email(
-
-                            subject_template=
-                                subject_template,
-
-                            body_template=
-                                body_template,
-
-                            vendor_name=
-                                vendor.get(
-                                    "vendorname"
-                                )
-                                or "",
-
-                            reevaluation_no=
-                                reevaluation_no,
-
-                            vendor_account=
-                                vendor_account,
-                        )
+                    subject, body = build_vendor_email(
+                        subject_template=subject_template,
+                        body_template=body_template,
+                        vendor_name=vendor.get("vendorname") or "",
+                        reevaluation_id=reevaluation_id,
+                        reevaluation_no=reevaluation_no,
+                        vendor_account=vendor_account,
                     )
-
+            
 
                     # ==========================================
                     # SEND MAIL

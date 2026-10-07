@@ -8,7 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.db.base import get_connection
-
+from app.services.email_service import send_email
 
 # ============================================================
 # SCHEMA
@@ -165,12 +165,17 @@ def send_reevaluation_email(
     body: str,
 ) -> None:
 
-    raise NotImplementedError(
-        "Connect send_reevaluation_email() "
-        "to your existing email service."
+    result = send_email(
+        to_email=to_email,
+        subject=subject,
+        body=body,
+        cc_emails=cc_emails,
     )
 
-
+    if result is not True:
+        raise Exception(
+            "Email service failed to send reevaluation email."
+        )
 # ============================================================
 # GET ACTIVE COMMON CC RECIPIENTS
 # ============================================================

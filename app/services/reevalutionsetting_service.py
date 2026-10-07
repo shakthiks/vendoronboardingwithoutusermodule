@@ -1110,6 +1110,315 @@ async def remove_cc_recipient(payload):
 # ============================================================
 # UPDATE EMAIL TEMPLATE
 # ============================================================
+# ============================================================
+# UPDATE EMAIL RECIPIENTS
+# ============================================================
+# ============================================================
+# UPDATE EMAIL RECIPIENTS
+# ============================================================
+
+def update_cc_recipient_sync(
+    payload,
+):
+
+    if not payload.recipients:
+        return {
+            "status": False,
+            "message": "At least one recipient is required."
+        }
+
+    with get_connection() as conn:
+
+        cursor = conn.cursor()
+
+        try:
+
+            updated_recipients = []
+
+            # =================================================
+            # LOOP THROUGH ALL RECIPIENTS
+            # =================================================
+
+            for item in payload.recipients:
+
+                cc_master_id = (
+                    item.cc_master_id
+                )
+
+                # =================================================
+                # FETCH CURRENT RECORD
+                # =================================================
+
+                cursor.execute(
+                    f"""
+                    SELECT
+                        CCMasterId,
+                        DisplayName,
+                        EmailAddress
+
+                    FROM {CC_MASTER_TABLE}
+
+                    WHERE
+                        CCMasterId = ?
+                        AND IsActive = 1;
+                    """,
+
+                    cc_master_id,
+                )
+
+                current_row = (
+                    cursor.fetchone()
+                )
+
+                if not current_row:
+
+                    conn.rollback()
+
+                    return {
+                        "status": False,
+
+                        "message": (
+                            "Active email recipient "
+                            f"not found for id "
+                            f"{cc_master_id}."
+                        ),
+
+                        "cc_master_id":
+                            cc_master_id,
+                    }
+
+                current_display_name = (
+                    current_row[1]
+                )
+
+                current_email_address = (
+                    current_row[2]
+                )
+
+                # =================================================
+                # KEEP EXISTING VALUE IF FIELD NOT SENT
+                # =================================================
+
+                display_name = (
+                    item.display_name.strip()
+                    if item.display_name is not None
+                    else current_display_name
+                )
+
+                email_address = (
+                    str(
+                        item.email_address
+                    ).strip()
+                    if item.email_address is not None
+                    else current_email_address
+                )
+
+                # =================================================
+                # VALIDATE DISPLAY NAME
+                # =================================================
+
+                if not display_name:
+
+                    conn.rollback()
+
+                    return {
+                        "status": False,
+
+                        "message": (
+                            "Display name cannot be empty."
+                        ),
+
+                        "cc_master_id":
+                            cc_master_id,
+                    }
+
+                # =================================================
+                # VALIDATE EMAIL
+                # =================================================
+
+                if not email_address:
+
+                    conn.rollback()
+
+                    return {
+                        "status": False,
+
+                        "message": (
+                            "Email address cannot be empty."
+                        ),
+
+                        "cc_master_id":
+                            cc_master_id,
+                    }
+
+                # =================================================
+                # CHECK DUPLICATE EMAIL
+                # =================================================
+
+                cursor.execute(
+                    f"""
+                    SELECT TOP 1
+                        CCMasterId
+
+                    FROM {CC_MASTER_TABLE}
+
+                    WHERE
+                        LOWER(
+                            LTRIM(
+                                RTRIM(
+                                    EmailAddress
+                                )
+                            )
+                        )
+                        =
+                        LOWER(
+                            LTRIM(
+                                RTRIM(?)
+                            )
+                        )
+
+                        AND CCMasterId <> ?
+
+                        AND IsActive = 1;
+                    """,
+
+                    email_address,
+
+                    cc_master_id,
+                )
+
+                duplicate = (
+                    cursor.fetchone()
+                )
+
+                if duplicate:
+
+                    conn.rollback()
+
+                    return {
+                        "status": False,
+
+                        "message": (
+                            "Another active recipient "
+                            f"already uses email "
+                            f"{email_address}."
+                        ),
+
+                        "cc_master_id":
+                            cc_master_id,
+                    }
+
+                # =================================================
+                # UPDATE RECIPIENT
+                # =================================================
+
+                cursor.execute(
+                    f"""
+                    UPDATE {CC_MASTER_TABLE}
+
+                    SET
+                        DisplayName = ?,
+
+                        EmailAddress = ?,
+
+                        ModifiedAt =
+                            SYSDATETIME(),
+
+                        ModifiedBy = ?
+
+                    WHERE
+                        CCMasterId = ?
+
+                        AND IsActive = 1;
+                    """,
+
+                    display_name,
+
+                    email_address,
+
+                    payload.modified_by,
+
+                    cc_master_id,
+                )
+
+                if cursor.rowcount == 0:
+
+                    conn.rollback()
+
+                    return {
+                        "status": False,
+
+                        "message": (
+                            "Email recipient "
+                            f"{cc_master_id} "
+                            "could not be updated."
+                        ),
+
+                        "cc_master_id":
+                            cc_master_id,
+                    }
+
+                # =================================================
+                # ADD UPDATED RECORD TO RESPONSE
+                # =================================================
+
+                updated_recipients.append(
+                    {
+                        "cc_master_id":
+                            cc_master_id,
+
+                        "display_name":
+                            display_name,
+
+                        "email_address":
+                            email_address,
+                    }
+                )
+
+            # =====================================================
+            # COMMIT ONLY AFTER ALL RECIPIENTS SUCCESS
+            # =====================================================
+
+            conn.commit()
+
+            return {
+                "status": True,
+
+                "message": (
+                    "Email recipients "
+                    "updated successfully."
+                ),
+
+                "data": {
+                    "updated_count":
+                        len(
+                            updated_recipients
+                        ),
+
+                    "recipients":
+                        updated_recipients,
+                },
+            }
+
+        except Exception:
+
+            conn.rollback()
+
+            raise
+
+        finally:
+
+            cursor.close()
+
+
+async def update_cc_recipient(
+    payload,
+):
+
+    return await run_in_threadpool(
+        update_cc_recipient_sync,
+        payload,
+    )
 def update_email_template_sync(payload):
 
     subject = None

@@ -1,4 +1,3 @@
-# app/schemas/reevaluation_settings_schema.py
 
 from typing import List, Optional
 
@@ -60,21 +59,37 @@ class AddCCRecipientRequest(BaseModel):
 
 
 # ============================================================
-# CC RECIPIENT - UPDATE
+# CC RECIPIENT - UPDATE ITEM
 # ============================================================
 
-class UpdateCCRecipientRequest(BaseModel):
+class UpdateCCRecipientItem(BaseModel):
     cc_master_id: int
 
     display_name: Optional[str] = None
 
     email_address: Optional[str] = None
 
+
+# ============================================================
+# CC RECIPIENT - UPDATE MULTIPLE
+# ============================================================
+
+class UpdateCCRecipientRequest(BaseModel):
+    recipients: List[UpdateCCRecipientItem]
+
     modified_by: str
+
+
+# ============================================================
+# CC RECIPIENT - REMOVE
+# ============================================================
 
 class RemoveCCRecipientRequest(BaseModel):
     cc_master_id: int
+
     modified_by: str
+
+
 # ============================================================
 # EMAIL TEMPLATE
 # ============================================================

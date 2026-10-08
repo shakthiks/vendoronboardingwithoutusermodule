@@ -6,7 +6,7 @@ services:
 
     image: vendor-portal-dev:latest
 
-    container_name: vendor_portal_dev
+    container_name: vendor_portal_dev_8095
 
     ports:
       - '${PORT}:${PORT}'

@@ -104,7 +104,49 @@ def _rows_to_dict(
         for row in cursor.fetchall()
     ]
 
+def _complete_reevaluation(
+    cursor,
+    reevaluation_id: int,
+    risk_assessment_id: int,
+    modified_by: str,
+):
 
+    cursor.execute(
+        f"""
+        UPDATE {REEVALUATION_TABLE}
+
+        SET
+            RiskAssessmentId = ?,
+
+            Status = 'COMPLETED',
+
+            CompletedAt =
+                SYSDATETIME(),
+
+            ModifiedAt =
+                SYSDATETIME(),
+
+            ModifiedBy = ?
+
+        WHERE
+            ReevaluationId = ?
+
+            AND IsActive = 1;
+        """,
+
+        risk_assessment_id,
+
+        modified_by,
+
+        reevaluation_id,
+    )
+
+
+    if cursor.rowcount == 0:
+
+        raise ValueError(
+            "Active reevaluation not found."
+        )
 # ============================================================
 # PRIMARY DB
 # GET REEVALUATION
@@ -1571,57 +1613,76 @@ def save_reevaluation_risk_assessment_sync(
             #     Reevaluation.Status = UNDER_REVIEW
             #
             # =================================================
-
+ 
             elif action == "COMPLETED":
 
+            # =========================================================
+            # RISK ASSESSMENT COMPLETED
+            #
+            # Business Rule:
+            # When risk assessment is completed,
+            # entire reevaluation is also completed.
+            # =========================================================
+
                 new_reevaluation_status = (
-                    "UNDER_REVIEW"
+                    "COMPLETED"
                 )
 
 
-                # =============================================
-                # UPDATE MAIN REEVALUATION
+                # =========================================================
+                # COMPLETE MAIN REEVALUATION
                 #
                 # Updates:
                 #   RiskAssessmentId
-                #   Status
+                #   Status = COMPLETED
+                #   CompletedAt
                 #   ModifiedAt
                 #   ModifiedBy
-                # =============================================
+                # =========================================================
 
-                _update_reevaluation_status(
+                _complete_reevaluation(
                     cursor=primary_cursor,
+
                     reevaluation_id=
                         payload.reevaluation_id,
+
                     risk_assessment_id=
                         risk_assessment_id,
-                    status=
-                        new_reevaluation_status,
+
                     modified_by=
                         payload.action_by,
                 )
 
 
-                # =============================================
-                # SAVE ACTION HISTORY
-                # =============================================
+                # =========================================================
+                # SAVE HISTORY
+                # =========================================================
 
                 _save_action(
                     cursor=primary_cursor,
+
                     reevaluation_id=
                         payload.reevaluation_id,
+
                     action_type=
                         "RISK_ASSESSED",
+
                     from_status=
                         current_status,
+
                     to_status=
                         new_reevaluation_status,
+
                     action_by=
                         payload.action_by,
+
                     remarks=(
                         payload.comments
                         or
-                        "Risk assessment completed."
+                        (
+                            "Risk assessment completed. "
+                            "Reevaluation completed."
+                        )
                     ),
                 )
 

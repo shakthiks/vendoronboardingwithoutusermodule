@@ -97,7 +97,25 @@ def get_vendor_reevaluation_home_sync():
 
             LR.ReevaluationCycle,
 
-            LR.RiskLevel,
+            --LR.RiskLevel,
+            CASE
+                WHEN UPPER(LR.RiskLevel) = 'CRITICAL'
+                    THEN 'Critical'
+
+                WHEN UPPER(LR.RiskLevel) = 'HIGH'
+                    THEN 'High'
+
+                WHEN UPPER(LR.RiskLevel) = 'ELEVATED'
+                    THEN 'Elevated'
+
+                WHEN UPPER(LR.RiskLevel) = 'MEDIUM'
+                    THEN 'Medium'
+
+                WHEN UPPER(LR.RiskLevel) = 'LOW'
+                    THEN 'Low'
+
+                ELSE LR.RiskLevel
+            END AS RiskLevel,
 
             CAST(
                 LR.CompletedAt AS DATE

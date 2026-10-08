@@ -1116,10 +1116,17 @@ async def get_reevaluation_risk_assessment(
 # ============================================================
 # SAVE RISK ASSESSMENT
 # ============================================================
+# ============================================================
+# SAVE RISK ASSESSMENT
+# ============================================================
 
 def save_reevaluation_risk_assessment_sync(
     payload,
 ):
+
+    # ========================================================
+    # ACTION
+    # ========================================================
 
     action = (
         payload.action
@@ -1127,31 +1134,26 @@ def save_reevaluation_risk_assessment_sync(
         .upper()
     )
 
-
     allowed_actions = {
         "DRAFT",
         "RETURNED",
         "COMPLETED",
     }
 
-
     if action not in allowed_actions:
 
         return {
             "status": False,
-
-            "message":
-                (
-                    "Action must be DRAFT, "
-                    "RETURNED or COMPLETED."
-                ),
-
+            "message": (
+                "Action must be DRAFT, "
+                "RETURNED or COMPLETED."
+            ),
             "data": None,
         }
 
 
     # ========================================================
-    # RETURN REQUIRES REASON
+    # RETURNED REQUIRES REASON
     # ========================================================
 
     if action == "RETURNED":
@@ -1163,16 +1165,13 @@ def save_reevaluation_risk_assessment_sync(
 
             return {
                 "status": False,
-
-                "message":
-                    "Return reason is required.",
-
+                "message": "Return reason is required.",
                 "data": None,
             }
 
 
     # ========================================================
-    # COMPLETE VALIDATION
+    # COMPLETED VALIDATION
     # ========================================================
 
     if action == "COMPLETED":
@@ -1183,15 +1182,11 @@ def save_reevaluation_risk_assessment_sync(
             )
         )
 
-
         if not valid:
 
             return {
                 "status": False,
-
-                "message":
-                    message,
-
+                "message": message,
                 "data": None,
             }
 
@@ -1226,41 +1221,39 @@ def save_reevaluation_risk_assessment_sync(
 
         return {
             "status": False,
-
-            "message":
-                "Reevaluation not found.",
-
+            "message": "Reevaluation not found.",
             "data": None,
         }
 
 
+    # ========================================================
+    # CURRENT REEVALUATION STATUS
+    # ========================================================
+
     current_status = (
-        reevaluation.get(
-            "status"
-        )
+        reevaluation.get("status")
         or ""
     ).strip().upper()
 
+
+    # ========================================================
+    # CANCELLED REEVALUATION CANNOT BE ASSESSED
+    # ========================================================
 
     if current_status == "CANCELLED":
 
         return {
             "status": False,
-
-            "message":
-                (
-                    "Cancelled reevaluation "
-                    "cannot be assessed."
-                ),
-
+            "message": (
+                "Cancelled reevaluation "
+                "cannot be assessed."
+            ),
             "data": None,
         }
 
 
     # ========================================================
     # OVERALL RISK LEVEL
-    # Frontend sends the header-level risk selected by assessor.
-    # Required when action = COMPLETED.
     # ========================================================
 
     overall_risk_level = None
@@ -1283,6 +1276,10 @@ def save_reevaluation_risk_assessment_sync(
     }
 
 
+    # ========================================================
+    # VALIDATE OVERALL RISK LEVEL
+    # ========================================================
+
     if overall_risk_level:
 
         if (
@@ -1292,17 +1289,18 @@ def save_reevaluation_risk_assessment_sync(
 
             return {
                 "status": False,
-
-                "message":
-                    (
-                        "Overall risk level must be "
-                        "LOW, MEDIUM, ELEVATED, "
-                        "HIGH or CRITICAL."
-                    ),
-
+                "message": (
+                    "Overall risk level must be "
+                    "LOW, MEDIUM, ELEVATED, "
+                    "HIGH or CRITICAL."
+                ),
                 "data": None,
             }
 
+
+    # ========================================================
+    # COMPLETED REQUIRES OVERALL RISK LEVEL
+    # ========================================================
 
     if action == "COMPLETED":
 
@@ -1310,13 +1308,10 @@ def save_reevaluation_risk_assessment_sync(
 
             return {
                 "status": False,
-
-                "message":
-                    (
-                        "Overall risk level is required "
-                        "when action is COMPLETED."
-                    ),
-
+                "message": (
+                    "Overall risk level is required "
+                    "when action is COMPLETED."
+                ),
                 "data": None,
             }
 
@@ -1324,7 +1319,10 @@ def save_reevaluation_risk_assessment_sync(
     # ========================================================
     # STEP 2
     # SECONDARY DB
-    # SAVE RISK HEADER + DETAILS
+    #
+    # SAVE:
+    #   RiskAssessment
+    #   RiskAssessmentDetail
     # ========================================================
 
     with get_secondary_connection() as secondary_conn:
@@ -1335,6 +1333,10 @@ def save_reevaluation_risk_assessment_sync(
 
         try:
 
+            # =================================================
+            # CHECK EXISTING ASSESSMENT
+            # =================================================
+
             assessment = (
                 _get_risk_assessment(
                     secondary_cursor,
@@ -1344,62 +1346,45 @@ def save_reevaluation_risk_assessment_sync(
 
 
             # =================================================
-            # CREATE
+            # CREATE NEW RISK ASSESSMENT
             # =================================================
 
             if not assessment:
 
                 risk_assessment_id = (
                     _create_risk_assessment(
-
-                        cursor=
-                            secondary_cursor,
-
-                        reevaluation=
-                            reevaluation,
-
-                        action=
-                            action,
-
-                        action_by=
-                            payload.action_by,
-
-                        comments=
-                            payload.comments,
-
+                        cursor=secondary_cursor,
+                        reevaluation=reevaluation,
+                        action=action,
+                        action_by=payload.action_by,
+                        comments=payload.comments,
                         overall_risk_level=
                             overall_risk_level,
                     )
                 )
 
 
-                # First save can directly be COMPLETE.
+                # =============================================
+                # If first save itself is COMPLETED,
+                # update SubmittedByUserId / SubmittedAt.
+                # =============================================
+
                 if action == "COMPLETED":
 
                     _update_risk_assessment(
-
-                        cursor=
-                            secondary_cursor,
-
+                        cursor=secondary_cursor,
                         risk_assessment_id=
                             risk_assessment_id,
-
-                        action=
-                            action,
-
-                        action_by=
-                            payload.action_by,
-
-                        comments=
-                            payload.comments,
-
+                        action=action,
+                        action_by=payload.action_by,
+                        comments=payload.comments,
                         overall_risk_level=
                             overall_risk_level,
                     )
 
 
             # =================================================
-            # UPDATE EXISTING
+            # UPDATE EXISTING RISK ASSESSMENT
             # =================================================
 
             else:
@@ -1410,50 +1395,37 @@ def save_reevaluation_risk_assessment_sync(
                     ]
                 )
 
-
                 _update_risk_assessment(
-
-                    cursor=
-                        secondary_cursor,
-
+                    cursor=secondary_cursor,
                     risk_assessment_id=
                         risk_assessment_id,
-
-                    action=
-                        action,
-
-                    action_by=
-                        payload.action_by,
-
-                    comments=
-                        payload.comments,
-
+                    action=action,
+                    action_by=payload.action_by,
+                    comments=payload.comments,
                     overall_risk_level=
                         overall_risk_level,
                 )
 
 
             # =================================================
-            # SAVE DETAIL ROWS
+            # SAVE RISK DETAIL ROWS
             # =================================================
 
             _save_risk_details(
-
-                cursor=
-                    secondary_cursor,
-
+                cursor=secondary_cursor,
                 risk_assessment_id=
                     risk_assessment_id,
-
                 prospect_id=
                     reevaluation[
                         "prospectid"
                     ],
-
-                details=
-                    payload.details,
+                details=payload.details,
             )
 
+
+            # =================================================
+            # COMMIT SECONDARY DB
+            # =================================================
 
             secondary_conn.commit()
 
@@ -1461,7 +1433,6 @@ def save_reevaluation_risk_assessment_sync(
         except Exception:
 
             secondary_conn.rollback()
-
             raise
 
 
@@ -1473,7 +1444,9 @@ def save_reevaluation_risk_assessment_sync(
     # ========================================================
     # STEP 3
     # PRIMARY DB
-    # WORKFLOW + ACTION HISTORY
+    #
+    # UPDATE REEVALUATION WORKFLOW
+    # SAVE ACTION HISTORY
     # ========================================================
 
     with get_connection() as primary_conn:
@@ -1486,6 +1459,11 @@ def save_reevaluation_risk_assessment_sync(
 
             # =================================================
             # DRAFT
+            #
+            # Risk assessment has started.
+            #
+            # Reevaluation:
+            # SUBMITTED -> UNDER_REVIEW
             # =================================================
 
             if action == "DRAFT":
@@ -1496,44 +1474,30 @@ def save_reevaluation_risk_assessment_sync(
 
 
                 _update_reevaluation_status(
-
-                    cursor=
-                        primary_cursor,
-
+                    cursor=primary_cursor,
                     reevaluation_id=
                         payload.reevaluation_id,
-
                     risk_assessment_id=
                         risk_assessment_id,
-
                     status=
                         new_reevaluation_status,
-
                     modified_by=
                         payload.action_by,
                 )
 
 
                 _save_action(
-
-                    cursor=
-                        primary_cursor,
-
+                    cursor=primary_cursor,
                     reevaluation_id=
                         payload.reevaluation_id,
-
                     action_type=
                         "RISK_DRAFT_SAVED",
-
                     from_status=
                         current_status,
-
                     to_status=
                         new_reevaluation_status,
-
                     action_by=
                         payload.action_by,
-
                     remarks=
                         payload.comments,
                 )
@@ -1541,6 +1505,12 @@ def save_reevaluation_risk_assessment_sync(
 
             # =================================================
             # RETURNED
+            #
+            # Assessor has returned the reevaluation
+            # to the vendor.
+            #
+            # Reevaluation:
+            # UNDER_REVIEW -> RESUBMISSION_REQUESTED
             # =================================================
 
             elif action == "RETURNED":
@@ -1551,44 +1521,30 @@ def save_reevaluation_risk_assessment_sync(
 
 
                 _update_reevaluation_status(
-
-                    cursor=
-                        primary_cursor,
-
+                    cursor=primary_cursor,
                     reevaluation_id=
                         payload.reevaluation_id,
-
                     risk_assessment_id=
                         risk_assessment_id,
-
                     status=
                         new_reevaluation_status,
-
                     modified_by=
                         payload.action_by,
                 )
 
 
                 _save_action(
-
-                    cursor=
-                        primary_cursor,
-
+                    cursor=primary_cursor,
                     reevaluation_id=
                         payload.reevaluation_id,
-
                     action_type=
                         "RESUBMISSION_REQUESTED",
-
                     from_status=
                         current_status,
-
                     to_status=
                         new_reevaluation_status,
-
                     action_by=
                         payload.action_by,
-
                     remarks=
                         payload.comments,
                 )
@@ -1596,74 +1552,83 @@ def save_reevaluation_risk_assessment_sync(
 
             # =================================================
             # COMPLETED
+            #
+            # Risk assessment is completed.
+            #
+            # IMPORTANT FIX:
+            #
+            # Previously this block only called:
+            #
+            #     _link_risk_assessment()
+            #
+            # That linked RiskAssessmentId but did NOT
+            # update Reevaluation.Status.
+            #
+            # Therefore SUBMITTED remained SUBMITTED.
+            #
+            # Now:
+            #
+            #     Reevaluation.Status = UNDER_REVIEW
+            #
             # =================================================
 
-            else:
-
-                # Risk Assessment completion ONLY.
-                #
-                # DO NOT calculate:
-                # RiskLevel
-                # EvaluationPeriodMonths
-                # EvaluatedAt
-                # NextReevaluationDate
-                # ReminderDate
-                #
-                # Those belong to Reevaluation Profile.
+            elif action == "COMPLETED":
 
                 new_reevaluation_status = (
-                    current_status
+                    "UNDER_REVIEW"
                 )
 
 
-                # Link the completed assessment
-                # to the main Reevaluation row.
+                # =============================================
+                # UPDATE MAIN REEVALUATION
+                #
+                # Updates:
+                #   RiskAssessmentId
+                #   Status
+                #   ModifiedAt
+                #   ModifiedBy
+                # =============================================
 
-                _link_risk_assessment(
-
-                    cursor=
-                        primary_cursor,
-
+                _update_reevaluation_status(
+                    cursor=primary_cursor,
                     reevaluation_id=
                         payload.reevaluation_id,
-
                     risk_assessment_id=
                         risk_assessment_id,
-
+                    status=
+                        new_reevaluation_status,
                     modified_by=
                         payload.action_by,
                 )
 
 
+                # =============================================
+                # SAVE ACTION HISTORY
+                # =============================================
+
                 _save_action(
-
-                    cursor=
-                        primary_cursor,
-
+                    cursor=primary_cursor,
                     reevaluation_id=
                         payload.reevaluation_id,
-
                     action_type=
                         "RISK_ASSESSED",
-
                     from_status=
                         current_status,
-
                     to_status=
-                        current_status,
-
+                        new_reevaluation_status,
                     action_by=
                         payload.action_by,
-
-                    remarks=
-                        (
-                            payload.comments
-
-                            or
-                            "Risk assessment completed."
-                        ),
+                    remarks=(
+                        payload.comments
+                        or
+                        "Risk assessment completed."
+                    ),
                 )
 
+
+            # =================================================
+            # COMMIT PRIMARY DB
+            # =================================================
 
             primary_conn.commit()
 
@@ -1671,7 +1636,6 @@ def save_reevaluation_risk_assessment_sync(
         except Exception:
 
             primary_conn.rollback()
-
             raise
 
 
@@ -1680,14 +1644,17 @@ def save_reevaluation_risk_assessment_sync(
             primary_cursor.close()
 
 
+    # ========================================================
+    # RESPONSE
+    # ========================================================
+
     return {
         "status": True,
 
-        "message":
-            (
-                "Risk assessment "
-                "saved successfully."
-            ),
+        "message": (
+            "Risk assessment "
+            "saved successfully."
+        ),
 
         "data": {
 
@@ -1709,6 +1676,10 @@ def save_reevaluation_risk_assessment_sync(
     }
 
 
+# ============================================================
+# ASYNC WRAPPER
+# ============================================================
+
 async def save_reevaluation_risk_assessment(
     payload,
 ):
@@ -1717,6 +1688,7 @@ async def save_reevaluation_risk_assessment(
         save_reevaluation_risk_assessment_sync,
         payload,
     )
+
 
 
 # ============================================================

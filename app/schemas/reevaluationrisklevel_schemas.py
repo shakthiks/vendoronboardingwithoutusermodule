@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 
 # ============================================================
-# GET PROFILE
+# GET REEVALUATION RISK PROFILE
 # ============================================================
 
 class GetReevaluationRiskLevelRequest(BaseModel):
@@ -15,7 +15,7 @@ class GetReevaluationRiskLevelRequest(BaseModel):
 
 
 # ============================================================
-# UPDATE CURRENT RISK LEVEL
+# UPDATE REEVALUATION RISK LEVEL
 # ============================================================
 
 class UpdateReevaluationRiskLevelRequest(BaseModel):

@@ -1,5 +1,3 @@
-# app/services/reevaluation_risklevel_service.py
-
 from __future__ import annotations
 
 from typing import Any
@@ -7,6 +5,7 @@ from typing import Any
 from fastapi.concurrency import run_in_threadpool
 
 from app.core.config import settings
+
 from app.db.base import get_connection
 
 
@@ -37,10 +36,6 @@ ACTION_TABLE = (
     f"{SCHEMA}.HIQ_VendorReevaluationAction"
 )
 
-RISK_ASSESSMENT_TABLE = (
-    f"{SCHEMA}.HIQ_VendorRiskAssessment"
-)
-
 
 # ============================================================
 # HELPERS
@@ -50,6 +45,9 @@ def _row_to_dict(
     cursor,
     row,
 ) -> dict[str, Any]:
+
+    if row is None:
+        return {}
 
     columns = [
         column[0].lower()
@@ -68,13 +66,21 @@ def _rows_to_dict(
     cursor,
 ) -> list[dict[str, Any]]:
 
+    if not cursor.description:
+        return []
+
     columns = [
         column[0].lower()
         for column in cursor.description
     ]
 
     return [
-        dict(zip(columns, row))
+        dict(
+            zip(
+                columns,
+                row,
+            )
+        )
         for row in cursor.fetchall()
     ]
 
@@ -95,17 +101,22 @@ def _get_reevaluation(
             ReevaluationNo,
             ProspectId,
             VendorAccount,
+
             TriggerType,
             TriggeredBy,
             TriggeredAt,
+
             Status,
-            RiskAssessmentId,
+
             RiskLevel,
             EvaluationPeriodMonths,
             EvaluatedAt,
             NextReevaluationDate,
             ReminderDate,
-            CompletedAt
+
+            CompletedAt,
+
+            IsActive
 
         FROM {REEVALUATION_TABLE}
 
@@ -117,14 +128,10 @@ def _get_reevaluation(
         reevaluation_id,
     )
 
-
     row = cursor.fetchone()
 
-
-    if not row:
-
+    if row is None:
         return None
-
 
     return _row_to_dict(
         cursor,
@@ -133,53 +140,7 @@ def _get_reevaluation(
 
 
 # ============================================================
-# GET ASSESSMENT RESULT
-# ============================================================
-
-def _get_assessment_result(
-    cursor,
-    reevaluation_id: int,
-):
-
-    cursor.execute(
-        f"""
-        SELECT TOP 1
-            RiskAssessmentId,
-            AssessmentStatus,
-            OverallRiskLevel,
-            AssessedByUserId,
-            SubmittedByUserId,
-            SubmittedAt
-
-        FROM {RISK_ASSESSMENT_TABLE}
-
-        WHERE
-            ReevaluationId = ?
-
-        ORDER BY
-            RiskAssessmentId DESC;
-        """,
-
-        reevaluation_id,
-    )
-
-
-    row = cursor.fetchone()
-
-
-    if not row:
-
-        return None
-
-
-    return _row_to_dict(
-        cursor,
-        row,
-    )
-
-
-# ============================================================
-# GET PERIOD
+# GET RISK PERIOD
 # ============================================================
 
 def _get_risk_period(
@@ -192,7 +153,8 @@ def _get_risk_period(
         SELECT TOP 1
             RiskPeriodId,
             RiskLevel,
-            EvaluationPeriodMonths
+            EvaluationPeriodMonths,
+            ReminderDaysBefore
 
         FROM {RISK_PERIOD_TABLE}
 
@@ -204,14 +166,10 @@ def _get_risk_period(
         risk_level,
     )
 
-
     row = cursor.fetchone()
 
-
-    if not row:
-
+    if row is None:
         return None
-
 
     return _row_to_dict(
         cursor,
@@ -220,7 +178,7 @@ def _get_risk_period(
 
 
 # ============================================================
-# GET NOTIFICATION
+# GET REEVALUATION NOTIFICATION SETTING
 # ============================================================
 
 def _get_notification_setting(
@@ -247,14 +205,10 @@ def _get_notification_setting(
         """
     )
 
-
     row = cursor.fetchone()
 
-
-    if not row:
-
+    if row is None:
         return None
-
 
     return _row_to_dict(
         cursor,
@@ -263,10 +217,10 @@ def _get_notification_setting(
 
 
 # ============================================================
-# SAVE HISTORY
+# SAVE RISK LEVEL CHANGE HISTORY
 # ============================================================
 
-def _save_history(
+def _save_risk_level_history(
     cursor,
     reevaluation_id: int,
     old_risk_level: str | None,
@@ -276,7 +230,6 @@ def _save_history(
 ):
 
     remarks_parts = []
-
 
     if old_risk_level:
 
@@ -297,18 +250,21 @@ def _save_history(
             )
         )
 
-
     if comments:
 
-        remarks_parts.append(
-            comments
+        cleaned_comments = (
+            comments.strip()
         )
 
+        if cleaned_comments:
+
+            remarks_parts.append(
+                cleaned_comments
+            )
 
     remarks = " ".join(
         remarks_parts
     )
-
 
     cursor.execute(
         f"""
@@ -316,11 +272,15 @@ def _save_history(
         (
             ReevaluationId,
             ActionType,
+
             FromStatus,
             ToStatus,
+
             Remarks,
+
             ActionBy,
             ActionAt,
+
             EmailTriggered
         )
 
@@ -350,7 +310,94 @@ def _save_history(
 
 
 # ============================================================
-# GET PROFILE
+# GET RISK LEVEL HISTORY
+# ============================================================
+
+def _get_risk_level_history(
+    cursor,
+    reevaluation_id: int,
+):
+
+    cursor.execute(
+        f"""
+        SELECT
+            ReevaluationActionId,
+            ActionAt,
+            ActionType,
+
+            FromStatus,
+            ToStatus,
+
+            ActionBy,
+            Remarks
+
+        FROM {ACTION_TABLE}
+
+        WHERE
+            ReevaluationId = ?
+
+            AND ActionType =
+                'RISK_LEVEL_CHANGED'
+
+        ORDER BY
+            ActionAt DESC;
+        """,
+
+        reevaluation_id,
+    )
+
+    rows = _rows_to_dict(
+        cursor
+    )
+
+    history = []
+
+    for row in rows:
+
+        history.append(
+            {
+                "action_id":
+                    row.get(
+                        "ReevaluationActionId"
+                    ),
+
+                "date":
+                    row.get(
+                        "actionat"
+                    ),
+
+                "action":
+                    row.get(
+                        "actiontype"
+                    ),
+
+                "previous_risk_level":
+                    row.get(
+                        "fromstatus"
+                    ),
+
+                "risk_level":
+                    row.get(
+                        "tostatus"
+                    ),
+
+                "changed_by":
+                    row.get(
+                        "actionby"
+                    ),
+
+                "comments":
+                    row.get(
+                        "remarks"
+                    ),
+            }
+        )
+
+    return history
+
+
+# ============================================================
+# GET REEVALUATION RISK PROFILE
 # ============================================================
 
 def get_reevaluation_risk_level_sync(
@@ -370,65 +417,30 @@ def get_reevaluation_risk_level_sync(
                 )
             )
 
-
             if not reevaluation:
 
                 return {
                     "status": False,
+
                     "message":
                         "Reevaluation not found.",
+
                     "data": None,
                 }
 
-
-            assessment = (
-                _get_assessment_result(
+            history = (
+                _get_risk_level_history(
                     cursor,
                     reevaluation_id,
                 )
             )
-
-
-            # =================================================
-            # HISTORY
-            # =================================================
-
-            cursor.execute(
-                f"""
-                SELECT
-                    ActionAt,
-                    ActionType,
-                    ActionBy,
-                    Remarks,
-                    FromStatus,
-                    ToStatus
-
-                FROM {ACTION_TABLE}
-
-                WHERE
-                    ReevaluationId = ?
-
-                ORDER BY
-                    ActionAt DESC;
-                """,
-
-                reevaluation_id,
-            )
-
-
-            history = (
-                _rows_to_dict(
-                    cursor
-                )
-            )
-
 
             return {
                 "status": True,
 
                 "message":
                     (
-                        "Reevaluation profile "
+                        "Reevaluation risk profile "
                         "retrieved successfully."
                     ),
 
@@ -459,6 +471,10 @@ def get_reevaluation_risk_level_sync(
                             "status"
                         ),
 
+                    # =============================
+                    # CURRENT RISK
+                    # =============================
+
                     "current_risk_level":
                         reevaluation.get(
                             "risklevel"
@@ -484,29 +500,33 @@ def get_reevaluation_risk_level_sync(
                             "reminderdate"
                         ),
 
-                    "assessment_result":
-                        (
-                            assessment.get(
-                                "overallrisklevel"
-                            )
-                            if assessment
-                            else None
+                    # =============================
+                    # TRIGGER INFORMATION
+                    # =============================
+
+                    "trigger_type":
+                        reevaluation.get(
+                            "triggertype"
                         ),
 
-                    "assessment_status":
-                        (
-                            assessment.get(
-                                "assessmentstatus"
-                            )
-                            if assessment
-                            else None
+                    "triggered_by":
+                        reevaluation.get(
+                            "triggeredby"
                         ),
+
+                    "triggered_at":
+                        reevaluation.get(
+                            "triggeredat"
+                        ),
+
+                    # =============================
+                    # RISK LEVEL HISTORY ONLY
+                    # =============================
 
                     "history":
                         history,
                 },
             }
-
 
         finally:
 
@@ -524,19 +544,22 @@ async def get_reevaluation_risk_level(
 
 
 # ============================================================
-# UPDATE CURRENT RISK LEVEL
+# UPDATE REEVALUATION RISK LEVEL
 # ============================================================
 
 def update_reevaluation_risk_level_sync(
     payload,
 ):
 
+    # ========================================================
+    # VALIDATE RISK LEVEL
+    # ========================================================
+
     risk_level = (
         payload.risk_level
         .strip()
         .upper()
     )
-
 
     allowed_levels = {
         "CRITICAL",
@@ -546,17 +569,18 @@ def update_reevaluation_risk_level_sync(
         "LOW",
     }
 
-
     if risk_level not in allowed_levels:
 
         return {
             "status": False,
+
             "message":
                 (
                     "Risk level must be "
                     "CRITICAL, HIGH, ELEVATED, "
                     "MEDIUM or LOW."
                 ),
+
             "data": None,
         }
 
@@ -568,7 +592,7 @@ def update_reevaluation_risk_level_sync(
         try:
 
             # =================================================
-            # GET REEVALUATION
+            # GET CURRENT REEVALUATION
             # =================================================
 
             reevaluation = (
@@ -578,40 +602,48 @@ def update_reevaluation_risk_level_sync(
                 )
             )
 
-
             if not reevaluation:
 
                 return {
                     "status": False,
+
                     "message":
                         "Reevaluation not found.",
+
                     "data": None,
                 }
 
 
-            if (
-                (
-                    reevaluation.get(
-                        "status"
-                    )
-                    or ""
+            # =================================================
+            # CANCELLED RECORD CANNOT BE CHANGED
+            # =================================================
+
+            current_status = (
+                reevaluation.get(
+                    "status"
                 )
-                .strip()
-                .upper()
-                == "CANCELLED"
-            ):
+                or ""
+            ).strip().upper()
+
+            if current_status == "CANCELLED":
 
                 return {
                     "status": False,
+
                     "message":
                         (
                             "Risk level cannot be "
                             "changed for a cancelled "
                             "reevaluation."
                         ),
+
                     "data": None,
                 }
 
+
+            # =================================================
+            # CURRENT RISK
+            # =================================================
 
             old_risk_level = (
                 reevaluation.get(
@@ -619,9 +651,38 @@ def update_reevaluation_risk_level_sync(
                 )
             )
 
+            if old_risk_level:
+
+                old_risk_level = (
+                    str(
+                        old_risk_level
+                    )
+                    .strip()
+                    .upper()
+                )
+
 
             # =================================================
-            # GET PERIOD FOR NEW RISK
+            # IF SAME RISK LEVEL
+            # =================================================
+
+            if old_risk_level == risk_level:
+
+                return {
+                    "status": False,
+
+                    "message":
+                        (
+                            "Selected risk level is "
+                            "already the current risk level."
+                        ),
+
+                    "data": None,
+                }
+
+
+            # =================================================
+            # GET PERIOD FOR SELECTED RISK
             # =================================================
 
             risk_period = (
@@ -631,17 +692,17 @@ def update_reevaluation_risk_level_sync(
                 )
             )
 
-
             if not risk_period:
 
                 return {
                     "status": False,
+
                     "message":
                         (
-                            "Active reevaluation "
-                            f"period not found for "
-                            f"{risk_level}."
+                            "Active reevaluation period "
+                            f"not found for {risk_level}."
                         ),
+
                     "data": None,
                 }
 
@@ -654,7 +715,7 @@ def update_reevaluation_risk_level_sync(
 
 
             # =================================================
-            # GET REMINDER SETTING
+            # GET REMINDER CONFIGURATION
             # =================================================
 
             notification = (
@@ -663,17 +724,18 @@ def update_reevaluation_risk_level_sync(
                 )
             )
 
-
             if not notification:
 
                 return {
                     "status": False,
+
                     "message":
                         (
                             "Active REEVALUATION_DUE "
                             "notification setting "
                             "not found."
                         ),
+
                     "data": None,
                 }
 
@@ -701,31 +763,10 @@ def update_reevaluation_risk_level_sync(
 
 
             # =================================================
-            # BUILD REMINDER SQL
+            # REMINDER DATE SQL
             # =================================================
 
             if notify_unit in {
-                "MONTH",
-                "MONTHS",
-            }:
-
-                reminder_sql = """
-                    DATEADD(
-                        MONTH,
-                        -?,
-                        DATEADD(
-                            MONTH,
-                            ?,
-                            CAST(
-                                SYSDATETIME()
-                                AS DATE
-                            )
-                        )
-                    )
-                """
-
-
-            elif notify_unit in {
                 "DAY",
                 "DAYS",
             }:
@@ -745,20 +786,44 @@ def update_reevaluation_risk_level_sync(
                     )
                 """
 
+            elif notify_unit in {
+                "MONTH",
+                "MONTHS",
+            }:
+
+                reminder_sql = """
+                    DATEADD(
+                        MONTH,
+                        -?,
+                        DATEADD(
+                            MONTH,
+                            ?,
+                            CAST(
+                                SYSDATETIME()
+                                AS DATE
+                            )
+                        )
+                    )
+                """
 
             else:
 
-                raise ValueError(
-                    (
-                        "Notification unit must "
-                        "be Days or Months."
-                    )
-                )
+                return {
+                    "status": False,
+
+                    "message":
+                        (
+                            "Notification unit must "
+                            "be Days or Months."
+                        ),
+
+                    "data": None,
+                }
 
 
             # =================================================
-            # UPDATE REEVALUATION PROFILE
-            # =================================================
+            # UPDATE REEVALUATION RISK PROFILE
+            # ============================================================
 
             cursor.execute(
                 f"""
@@ -792,23 +857,27 @@ def update_reevaluation_risk_level_sync(
 
                 WHERE
                     ReevaluationId = ?
+
                     AND IsActive = 1;
                 """,
 
+                # RiskLevel
                 risk_level,
 
+                # EvaluationPeriodMonths
                 evaluation_months,
 
-                # Next Reevaluation Date
+                # NextReevaluationDate
                 evaluation_months,
 
-                # Reminder
+                # ReminderDate
                 notify_value,
-
                 evaluation_months,
 
+                # Audit
                 payload.modified_by,
 
+                # Reevaluation
                 payload.reevaluation_id,
             )
 
@@ -819,17 +888,19 @@ def update_reevaluation_risk_level_sync(
 
                 return {
                     "status": False,
+
                     "message":
                         "Reevaluation not found.",
+
                     "data": None,
                 }
 
 
             # =================================================
-            # HISTORY
+            # SAVE HISTORY
             # =================================================
 
-            _save_history(
+            _save_risk_level_history(
                 cursor=cursor,
 
                 reevaluation_id=
@@ -865,15 +936,19 @@ def update_reevaluation_risk_level_sync(
                 FROM {REEVALUATION_TABLE}
 
                 WHERE
-                    ReevaluationId = ?;
+                    ReevaluationId = ?
+                    AND IsActive = 1;
                 """,
 
                 payload.reevaluation_id,
             )
 
-
             row = cursor.fetchone()
 
+
+            # =================================================
+            # COMMIT
+            # =================================================
 
             conn.commit()
 
@@ -883,7 +958,7 @@ def update_reevaluation_risk_level_sync(
 
                 "message":
                     (
-                        "Current risk level "
+                        "Current reevaluation risk level "
                         "updated successfully."
                     ),
 

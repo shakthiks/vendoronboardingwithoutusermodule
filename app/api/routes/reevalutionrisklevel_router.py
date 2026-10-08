@@ -15,18 +15,15 @@ from app.services.reevalutionrisklevel_service import (
 
 router = APIRouter(
     prefix="/vendor-reevaluation/risk-level",
-
-    tags=[
-        "Vendor Reevaluation Risk Level"
-    ],
+    tags=["Vendor Reevaluation Risk Level"],
 )
 
 
 # ============================================================
-# GET REEVALUATION PROFILE
+# GET REEVALUATION RISK PROFILE
 # ============================================================
 
-@router.post("")
+@router.post("/get")
 async def get_risk_level(
     payload: GetReevaluationRiskLevelRequest,
 ):

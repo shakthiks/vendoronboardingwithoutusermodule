@@ -12,8 +12,10 @@ from app.db.base import (
     get_connection,
     get_secondary_connection,
 )
-
-
+from app.utils.reevalution_email_template import (
+    build_reevaluation_email_html,
+)
+from app.services.email_service import send_email
 # ============================================================
 # SCHEMA
 # ============================================================
@@ -1113,9 +1115,24 @@ def get_reevaluation_risk_assessment_sync(
                         "submittedbyuserid"
                     ),
 
+
                 "comments":
                     assessment.get(
                         "comments"
+                    ),
+
+                "return_reason":
+                    (
+                        assessment.get(
+                            "comments"
+                        )
+                        if (
+                            assessment.get(
+                                "assessmentstatus"
+                            )
+                            or ""
+                        ).strip().upper() == "RETURNED"
+                        else None
                     ),
 
                 "overall_risk_level":
@@ -1192,24 +1209,6 @@ def save_reevaluation_risk_assessment_sync(
             ),
             "data": None,
         }
-
-
-    # ========================================================
-    # RETURNED REQUIRES REASON
-    # ========================================================
-
-    if action == "RETURNED":
-
-        if not (
-            payload.comments
-            and payload.comments.strip()
-        ):
-
-            return {
-                "status": False,
-                "message": "Return reason is required.",
-                "data": None,
-            }
 
 
     # ========================================================
@@ -1840,8 +1839,7 @@ def _get_return_email_data(
                 f"""
                 SELECT TOP 1
                     RiskAssessmentId,
-                    AssessmentStatus,
-                    Comments AS ReturnReason
+                    AssessmentStatus
 
                 FROM {RISK_ASSESSMENT_TABLE}
 
@@ -1928,7 +1926,6 @@ def _get_active_cc_emails(
 # ============================================================
 # BUILD RETURN EMAIL
 # ============================================================
-
 def _build_return_email(
     subject: str,
     body: str,
@@ -1945,7 +1942,6 @@ def _build_return_email(
         .strip()
         .rstrip("/")
     )
-
 
     reevaluation_link = (
         f"{frontend_url}"
@@ -1980,15 +1976,16 @@ def _build_return_email(
     }
 
 
-    rendered_subject = subject
+    rendered_subject = (
+        subject or ""
+    )
 
-    rendered_body = body
+    rendered_body = (
+        body or ""
+    )
 
 
-    for (
-        placeholder,
-        value,
-    ) in replacements.items():
+    for placeholder, value in replacements.items():
 
         rendered_subject = (
             rendered_subject.replace(
@@ -2005,9 +2002,53 @@ def _build_return_email(
         )
 
 
+    rendered_body = (
+        rendered_body
+        .replace("\r\n", "<br>")
+        .replace("\n", "<br>")
+    )
+
+
+    content = f"""
+        <p style="margin:0 0 20px 0;">
+            {rendered_body}
+        </p>
+
+        <div
+            style="
+                background:#fff7ed;
+                border-left:4px solid #f59e0b;
+                padding:14px 16px;
+                margin:20px 0;
+            "
+        >
+            <strong>Return Reason:</strong><br>
+            {return_reason}
+        </div>
+    """
+
+
+    html_body = (
+        build_reevaluation_email_html(
+
+            vendor_name=
+                vendor_name,
+
+            content=
+                content,
+
+            action_url=
+                reevaluation_link,
+
+            action_text=
+                "Update Reevaluation Form",
+        )
+    )
+
+
     return (
         rendered_subject,
-        rendered_body,
+        html_body,
     )
 
 
@@ -2022,28 +2063,17 @@ def _send_return_email(
     body: str,
 ):
 
-    """
-    Connect this to the email sender already used
-    by your VendorHub project.
-
-    Example:
-
-        send_email(
-            to_email=to_email,
-            cc_emails=cc_emails,
-            subject=subject,
-            body=body,
-        )
-
-    The DB logic around this function is complete.
-    """
-
-    raise NotImplementedError(
-        (
-            "Connect _send_return_email() "
-            "to the existing VendorHub mail service."
-        )
+    result = send_email(
+        to_email=to_email,
+        subject=subject,
+        body=body,
+        cc_emails=cc_emails,
     )
+
+    if result is not True:
+        raise Exception(
+            "Email service failed to send return email."
+        )
 
 
 # ============================================================
@@ -2136,6 +2166,65 @@ def _save_return_email_action(
 
 
 # ============================================================
+# SECONDARY DB
+# SAVE RETURN REASON INTO RiskAssessment.Comments
+# ============================================================
+
+def _save_return_reason(
+    reevaluation_id: int,
+    return_reason: str,
+):
+
+    with get_secondary_connection() as conn:
+
+        cursor = conn.cursor()
+
+        try:
+
+            cursor.execute(
+                f"""
+                UPDATE {RISK_ASSESSMENT_TABLE}
+
+                SET
+                    Comments = ?,
+                    ModifiedAt = SYSDATETIME()
+
+                WHERE
+                    RiskAssessmentId =
+                    (
+                        SELECT TOP 1
+                            RiskAssessmentId
+
+                        FROM {RISK_ASSESSMENT_TABLE}
+
+                        WHERE
+                            ReevaluationId = ?
+
+                        ORDER BY
+                            RiskAssessmentId DESC
+                    );
+                """,
+
+                return_reason,
+                reevaluation_id,
+            )
+
+            if cursor.rowcount == 0:
+                raise ValueError(
+                    "Risk assessment not found."
+                )
+
+            conn.commit()
+
+        except Exception:
+            conn.rollback()
+            raise
+
+        finally:
+            cursor.close()
+
+
+# ============================================================
 # SEND RETURN EMAIL
 # ============================================================
 
@@ -2151,6 +2240,12 @@ def send_return_email_sync(
 
     body = (
         payload.body
+        or ""
+    ).strip()
+
+
+    return_reason = (
+        payload.return_reason
         or ""
     ).strip()
 
@@ -2174,6 +2269,18 @@ def send_return_email_sync(
 
             "message":
                 "Email body is required.",
+
+            "data": None,
+        }
+
+
+    if not return_reason:
+
+        return {
+            "status": False,
+
+            "message":
+                "Return reason is required.",
 
             "data": None,
         }
@@ -2262,27 +2369,15 @@ def send_return_email_sync(
 
 
     # ========================================================
-    # RETURN REASON FROM SECONDARY DB
+    # SAVE RETURN REASON
+    # Frontend key: return_reason
+    # DB column: HIQ_VendorRiskAssessment.Comments
     # ========================================================
 
-    return_reason = (
-        email_data.get(
-            "returnreason"
-        )
-        or ""
-    ).strip()
-
-
-    if not return_reason:
-
-        return {
-            "status": False,
-
-            "message":
-                "Return reason not found.",
-
-            "data": None,
-        }
+    _save_return_reason(
+        reevaluation_id=payload.reevaluation_id,
+        return_reason=return_reason,
+    )
 
 
     # ========================================================

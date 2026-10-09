@@ -33,7 +33,26 @@ class ReevaluationRiskAssessmentDetail(BaseModel):
 
 # ============================================================
 # SAVE RISK ASSESSMENT
-# DRAFT / RETURNED / COMPLETED
+#
+# ACTION:
+# DRAFT
+# RETURNED
+# COMPLETED
+#
+# IMPORTANT:
+#
+# When action = RETURNED,
+# frontend sends the return reason in:
+#
+#     comments
+#
+# Database stores it in:
+#
+#     HIQ_VendorRiskAssessment.Comments
+#
+# Backend returns it to frontend as:
+#
+#     return_reason
 # ============================================================
 
 class SaveReevaluationRiskAssessmentRequest(BaseModel):
@@ -42,11 +61,28 @@ class SaveReevaluationRiskAssessmentRequest(BaseModel):
 
     action: str
 
-    # Overall risk selected by the assessor.
-    # Example:
-    # LOW / MEDIUM / ELEVATED / HIGH / CRITICAL
+    # Overall risk selected by assessor.
+    #
+    # Allowed:
+    # LOW
+    # MEDIUM
+    # ELEVATED
+    # HIGH
+    # CRITICAL
     overall_risk_level: Optional[str] = None
 
+    # --------------------------------------------------------
+    # COMMENTS
+    #
+    # For DRAFT:
+    # normal assessment comments
+    #
+    # For RETURNED:
+    # this value becomes the return reason.
+    #
+    # DB column:
+    # HIQ_VendorRiskAssessment.Comments
+    # --------------------------------------------------------
     comments: Optional[str] = None
 
     action_by: str
@@ -60,6 +96,18 @@ class SaveReevaluationRiskAssessmentRequest(BaseModel):
 
 # ============================================================
 # RETURN EMAIL
+#
+# IMPORTANT:
+#
+# return_reason IS required from frontend here.
+#
+# Backend stores it into:
+#
+# HIQ_VendorRiskAssessment.Comments
+#
+# API response:
+#
+# "return_reason": "..."
 # ============================================================
 
 class SendReturnEmailRequest(BaseModel):
@@ -75,5 +123,7 @@ class SendReturnEmailRequest(BaseModel):
     cc_emails: List[str] = Field(
         default_factory=list
     )
+
+    return_reason: str
 
     action_by: str

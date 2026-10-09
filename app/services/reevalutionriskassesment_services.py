@@ -12,8 +12,10 @@ from app.db.base import (
     get_connection,
     get_secondary_connection,
 )
-
-
+from app.utils.reevalution_email_template import (
+    build_reevaluation_email_html,
+)
+from app.services.email_service import send_email
 # ============================================================
 # SCHEMA
 # ============================================================
@@ -1928,7 +1930,6 @@ def _get_active_cc_emails(
 # ============================================================
 # BUILD RETURN EMAIL
 # ============================================================
-
 def _build_return_email(
     subject: str,
     body: str,
@@ -1945,7 +1946,6 @@ def _build_return_email(
         .strip()
         .rstrip("/")
     )
-
 
     reevaluation_link = (
         f"{frontend_url}"
@@ -1980,15 +1980,16 @@ def _build_return_email(
     }
 
 
-    rendered_subject = subject
+    rendered_subject = (
+        subject or ""
+    )
 
-    rendered_body = body
+    rendered_body = (
+        body or ""
+    )
 
 
-    for (
-        placeholder,
-        value,
-    ) in replacements.items():
+    for placeholder, value in replacements.items():
 
         rendered_subject = (
             rendered_subject.replace(
@@ -2005,9 +2006,53 @@ def _build_return_email(
         )
 
 
+    rendered_body = (
+        rendered_body
+        .replace("\r\n", "<br>")
+        .replace("\n", "<br>")
+    )
+
+
+    content = f"""
+        <p style="margin:0 0 20px 0;">
+            {rendered_body}
+        </p>
+
+        <div
+            style="
+                background:#fff7ed;
+                border-left:4px solid #f59e0b;
+                padding:14px 16px;
+                margin:20px 0;
+            "
+        >
+            <strong>Return Reason:</strong><br>
+            {return_reason}
+        </div>
+    """
+
+
+    html_body = (
+        build_reevaluation_email_html(
+
+            vendor_name=
+                vendor_name,
+
+            content=
+                content,
+
+            action_url=
+                reevaluation_link,
+
+            action_text=
+                "Update Reevaluation Form",
+        )
+    )
+
+
     return (
         rendered_subject,
-        rendered_body,
+        html_body,
     )
 
 

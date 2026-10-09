@@ -9,7 +9,9 @@ from fastapi.concurrency import run_in_threadpool
 from app.core.config import settings
 from app.db.base import get_connection
 from app.services.email_service import send_email
-
+from app.utils.reevalution_email_template import (
+    build_reevaluation_email_html,
+)
 # ============================================================
 # SCHEMA
 # ============================================================
@@ -84,26 +86,17 @@ def build_vendor_email(
     subject = subject_template or ""
     body = body_template or ""
 
-    # ========================================================
-    # FRONTEND URL FROM ENV
-    # ========================================================
-
     frontend_url = (
         settings.ONBOARDING_FRONTEND_URL
         .strip()
         .rstrip("/")
     )
 
-    # Adjust this frontend route if your React route differs
     reevaluation_link = (
         f"{frontend_url}"
         f"/vendor-reevaluation"
         f"?reevaluationId={reevaluation_id}"
     )
-
-    # ========================================================
-    # TEMPLATE PLACEHOLDERS
-    # ========================================================
 
     replacements = {
         "[Vendor Name]":
@@ -134,7 +127,41 @@ def build_vendor_email(
             str(value),
         )
 
-    return subject, body
+
+    # ==========================================
+    # CONVERT FRONTEND/TEMPLATE BODY TO HTML
+    # ==========================================
+
+    formatted_content = (
+        body
+        .replace("\r\n", "<br>")
+        .replace("\n", "<br>")
+    )
+
+
+    html_body = build_reevaluation_email_html(
+
+        vendor_name=
+            vendor_name,
+
+        content=f"""
+            <p style="margin:0 0 20px 0;">
+                {formatted_content}
+            </p>
+        """,
+
+        action_url=
+            reevaluation_link,
+
+        action_text=
+            "Open Vendor Reevaluation Form",
+    )
+
+
+    return (
+        subject,
+        html_body,
+    )
 
 
 # ============================================================

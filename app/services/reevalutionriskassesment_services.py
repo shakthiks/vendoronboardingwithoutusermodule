@@ -1944,11 +1944,9 @@ def _build_return_email(
     )
 
     reevaluation_link = (
-        f"{frontend_url}"
-        f"/vendor-reevaluation"
-        f"?reevaluationId="
-        f"{reevaluation_id}"
-    )
+    settings.ONBOARDING_FRONTEND_URL
+    .strip()
+)
 
 
     replacements = {

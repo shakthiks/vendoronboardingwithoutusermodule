@@ -86,17 +86,21 @@ def build_vendor_email(
     subject = subject_template or ""
     body = body_template or ""
 
-    frontend_url = (
-        settings.ONBOARDING_FRONTEND_URL
-        .strip()
-        .rstrip("/")
-    )
+    # frontend_url = (
+    #     settings.ONBOARDING_FRONTEND_URL
+    #     .strip()
+    #     .rstrip("/")
+    # )
+
+    # reevaluation_link = (
+    #     f"{frontend_url}"
+    #     f"/vendor-reevaluation"
+    #     f"?reevaluationId={reevaluation_id}"
+    # )
 
     reevaluation_link = (
-        f"{frontend_url}"
-        f"/vendor-reevaluation"
-        f"?reevaluationId={reevaluation_id}"
-    )
+    settings.ONBOARDING_FRONTEND_URL
+    .strip())
 
     replacements = {
         "[Vendor Name]":

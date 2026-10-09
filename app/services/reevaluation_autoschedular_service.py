@@ -520,11 +520,9 @@ def _build_auto_reevaluation_email(
     )
 
     reevaluation_link = (
-        f"{frontend_url}"
-        f"/vendor-reevaluation"
-        f"?reevaluationId="
-        f"{reevaluation_id}"
-    )
+    settings.ONBOARDING_FRONTEND_URL
+    .strip()
+)
 
     if trigger_reason == (
         EVENT_CERTIFICATE_EXPIRED

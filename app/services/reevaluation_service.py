@@ -54,6 +54,7 @@ def get_vendor_reevaluation_home_sync():
                 R.VendorAccount,
                 R.ReevaluationCycle,
                 R.Status,
+                R.ToEmail,
                 R.RiskLevel,
                 R.CompletedAt,
                 R.NextReevaluationDate,
@@ -85,6 +86,7 @@ def get_vendor_reevaluation_home_sync():
             VP.ProspectId,
 
             VP.Name AS VendorName,
+            LR.ToEmail AS Email,
 
 
             -- ==========================================

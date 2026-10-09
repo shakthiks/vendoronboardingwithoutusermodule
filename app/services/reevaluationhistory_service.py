@@ -13,14 +13,34 @@ from app.db.base import (
 )
 
 
+# ============================================================
+# SCHEMA / TABLES
+# ============================================================
+
 SCHEMA = settings.DB_SCHEMA
 
-REEVALUATION_TABLE = f"{SCHEMA}.HIQ_VendorReevaluation"
-ACTION_TABLE = f"{SCHEMA}.HIQ_VendorReevaluationAction"
-USER_TABLE = f"{SCHEMA}.HIQ_Users"
+REEVALUATION_TABLE = (
+    f"{SCHEMA}.HIQ_VendorReevaluation"
+)
+
+ACTION_TABLE = (
+    f"{SCHEMA}.HIQ_VendorReevaluationAction"
+)
+
+USER_TABLE = (
+    f"{SCHEMA}.HIQ_Users"
+)
 
 
-def _row_to_dict(cursor, row) -> dict[str, Any]:
+# ============================================================
+# COMMON HELPERS
+# ============================================================
+
+def _row_to_dict(
+    cursor,
+    row,
+) -> dict[str, Any]:
+
     if row is None:
         return {}
 
@@ -29,10 +49,18 @@ def _row_to_dict(cursor, row) -> dict[str, Any]:
         for column in cursor.description
     ]
 
-    return dict(zip(columns, row))
+    return dict(
+        zip(
+            columns,
+            row,
+        )
+    )
 
 
-def _rows_to_dict(cursor) -> list[dict[str, Any]]:
+def _rows_to_dict(
+    cursor,
+) -> list[dict[str, Any]]:
+
     if not cursor.description:
         return []
 
@@ -42,10 +70,19 @@ def _rows_to_dict(cursor) -> list[dict[str, Any]]:
     ]
 
     return [
-        dict(zip(columns, row))
+        dict(
+            zip(
+                columns,
+                row,
+            )
+        )
         for row in cursor.fetchall()
     ]
 
+
+# ============================================================
+# FORMAT HELPERS
+# ============================================================
 
 def _format_trigger_type(
     trigger_type: str | None,
@@ -54,7 +91,11 @@ def _format_trigger_type(
     if not trigger_type:
         return None
 
-    value = str(trigger_type).strip().upper()
+    value = (
+        str(trigger_type)
+        .strip()
+        .upper()
+    )
 
     if value == "AUTO":
         return "Auto Triggered"
@@ -77,7 +118,11 @@ def _format_risk_level(
     if not risk_level:
         return None
 
-    return str(risk_level).strip().title()
+    return (
+        str(risk_level)
+        .strip()
+        .title()
+    )
 
 
 def _format_status(
@@ -94,6 +139,19 @@ def _format_status(
         .title()
     )
 
+
+# ============================================================
+# USER NAME LOOKUP
+#
+# ActionBy may contain UserId like:
+#   27
+#
+# TriggeredBy may contain Username like:
+#   Admin
+#
+# So check both UserId and Username.
+# ============================================================
+
 def _get_user_name(
     user_reference,
 ) -> str | None:
@@ -101,20 +159,17 @@ def _get_user_name(
     if user_reference is None:
         return None
 
-    reference = str(
-        user_reference
-    ).strip()
+    reference = (
+        str(user_reference)
+        .strip()
+    )
 
     if not reference:
         return None
 
-    # ========================================================
-    # SYSTEM USER
-    # ========================================================
-
+    # SYSTEM generated action
     if reference.upper() == "SYSTEM":
         return "System"
-
 
     try:
 
@@ -124,36 +179,21 @@ def _get_user_name(
 
             try:
 
-                # =================================================
-                # CHECK BY:
-                #
-                # 1. UserId
-                # 2. Username
-                #
-                # Example:
-                #
-                # ActionBy = 27
-                #     → match HIQ_Users.UserId = 27
-                #
-                # TriggeredBy = Admin
-                #     → match HIQ_Users.Username = Admin
-                # =================================================
-
                 cursor.execute(
                     f"""
                     SELECT TOP 1
-
                         UserId,
-
                         Username,
-
                         FullName
 
                     FROM {USER_TABLE}
 
                     WHERE
                         (
-                            CAST(UserId AS VARCHAR(50)) = ?
+                            CAST(
+                                UserId
+                                AS VARCHAR(50)
+                            ) = ?
 
                             OR
 
@@ -162,71 +202,58 @@ def _get_user_name(
 
                         AND IsActive = 1;
                     """,
-
                     reference,
                     reference,
                 )
 
-
                 row = cursor.fetchone()
 
-
                 if not row:
-
-                    # No user mapping found
                     return reference
-
 
                 full_name = row[2]
 
-
                 if full_name:
-
-                    return str(
-                        full_name
-                    ).strip()
-
-
-                # If FullName is NULL,
-                # fallback to Username
+                    return (
+                        str(full_name)
+                        .strip()
+                    )
 
                 username = row[1]
 
-
                 if username:
-
-                    return str(
-                        username
-                    ).strip()
-
+                    return (
+                        str(username)
+                        .strip()
+                    )
 
                 return reference
-
 
             finally:
 
                 cursor.close()
 
-
     except Exception:
 
+        # Do not break history API if name lookup fails.
         return reference
 
 
+# ============================================================
+# GET BEST ACTION FOR ONE REEVALUATION CYCLE
+#
+# Used to get:
+#   assessed_by_id
+#   assessed_by_name
+#   comments
+#   action_type
+#   action_at
+# ============================================================
 
 def _get_cycle_action_summary(
     cursor,
     reevaluation_id: int,
 ) -> dict[str, Any]:
-    """
-    Get the most useful action for the cycle.
-
-    Priority:
-    RISK_ASSESSED
-    VALIDATION_COMPLETED
-    COMPLETED
-    Otherwise latest action.
-    """
 
     cursor.execute(
         f"""
@@ -242,8 +269,12 @@ def _get_cycle_action_summary(
             EmailStatus,
             EmailSentAt,
             EmailError
+
         FROM {ACTION_TABLE}
-        WHERE ReevaluationId = ?
+
+        WHERE
+            ReevaluationId = ?
+
         ORDER BY
             ActionAt DESC,
             ReevaluationActionId DESC;
@@ -251,9 +282,14 @@ def _get_cycle_action_summary(
         reevaluation_id,
     )
 
-    actions = _rows_to_dict(cursor)
+    actions = (
+        _rows_to_dict(
+            cursor
+        )
+    )
 
     if not actions:
+
         return {
             "assessed_by_id": None,
             "assessed_by_name": None,
@@ -262,6 +298,7 @@ def _get_cycle_action_summary(
             "action_at": None,
         }
 
+    # Prefer assessment/completion actions.
     preferred_actions = [
         "RISK_ASSESSED",
         "VALIDATION_COMPLETED",
@@ -271,14 +308,18 @@ def _get_cycle_action_summary(
     selected_action = None
 
     for preferred in preferred_actions:
+
         selected_action = next(
             (
                 item
                 for item in actions
                 if (
-                    item.get("actiontype")
+                    item.get(
+                        "actiontype"
+                    )
                     or ""
-                ).strip().upper() == preferred
+                ).strip().upper()
+                == preferred
             ),
             None,
         )
@@ -286,62 +327,86 @@ def _get_cycle_action_summary(
         if selected_action:
             break
 
+    # If no preferred action exists,
+    # use the latest action.
     if not selected_action:
         selected_action = actions[0]
 
-    action_by_id = selected_action.get("actionby")
+    action_by_id = (
+        selected_action.get(
+            "actionby"
+        )
+    )
 
     return {
-        "assessed_by_id": (
-            str(action_by_id)
-            if action_by_id is not None
-            else None
-        ),
-        "assessed_by_name": _get_user_name(
-            action_by_id
-        ),
-        "comments": selected_action.get(
-            "remarks"
-        ),
-        "action_type": selected_action.get(
-            "actiontype"
-        ),
-        "action_at": selected_action.get(
-            "actionat"
-        ),
+        "assessed_by_id":
+            (
+                str(action_by_id)
+                if action_by_id is not None
+                else None
+            ),
+
+        "assessed_by_name":
+            _get_user_name(
+                action_by_id
+            ),
+
+        "comments":
+            selected_action.get(
+                "remarks"
+            ),
+
+        "action_type":
+            selected_action.get(
+                "actiontype"
+            ),
+
+        "action_at":
+            selected_action.get(
+                "actionat"
+            ),
     }
 
+
+# ============================================================
+# MAIN HISTORY SERVICE
+#
+# Input:
+#   reevaluation_id
+#
+# Output:
+#   current_risk_level
+#   plus one history row per reevaluation cycle.
+# ============================================================
 
 def get_reevaluation_history_sync(
     reevaluation_id: int,
 ):
-    """
-    Returns one row per reevaluation cycle for the same ProspectId.
-
-    UI fields:
-    Date
-    Action / Status
-    Assessed By
-    Trigger Type
-    Risk Level
-    Trigger By
-    Comments
-    """
 
     with get_connection() as conn:
+
         cursor = conn.cursor()
 
         try:
-            # ----------------------------------------------------
-            # STEP 1: Resolve the vendor/prospect from input ID
-            # ----------------------------------------------------
+
+            # ====================================================
+            # STEP 1
+            # GET CURRENT REEVALUATION
+            #
+            # RiskLevel is included here so the API can return:
+            # current_risk_level
+            # ====================================================
+
             cursor.execute(
                 f"""
                 SELECT TOP 1
                     ReevaluationId,
                     ProspectId,
-                    VendorAccount
+                    VendorAccount,
+                    RiskLevel
+
                 FROM {REEVALUATION_TABLE}
+
                 WHERE
                     ReevaluationId = ?
                     AND IsActive = 1;
@@ -349,31 +414,53 @@ def get_reevaluation_history_sync(
                 reevaluation_id,
             )
 
-            current_row = cursor.fetchone()
+            current_row = (
+                cursor.fetchone()
+            )
 
             if not current_row:
+
                 return {
                     "status": False,
-                    "message": "Reevaluation not found.",
+                    "message":
+                        "Reevaluation not found.",
                     "data": None,
                 }
 
-            current = _row_to_dict(
-                cursor,
-                current_row,
+            current = (
+                _row_to_dict(
+                    cursor,
+                    current_row,
+                )
             )
 
-            prospect_id = current.get(
-                "prospectid"
+            prospect_id = (
+                current.get(
+                    "prospectid"
+                )
             )
 
-            vendor_account = current.get(
-                "vendoraccount"
+            vendor_account = (
+                current.get(
+                    "vendoraccount"
+                )
             )
 
-            # ----------------------------------------------------
-            # STEP 2: Get every reevaluation cycle for this vendor
-            # ----------------------------------------------------
+            current_risk_level = (
+                _format_risk_level(
+                    current.get(
+                        "risklevel"
+                    )
+                )
+            )
+
+            # ====================================================
+            # STEP 2
+            # GET ALL REEVALUATION CYCLES
+            #
+            # Each cycle keeps its own RiskLevel.
+            # ====================================================
+
             cursor.execute(
                 f"""
                 SELECT
@@ -392,10 +479,13 @@ def get_reevaluation_history_sync(
                     CompletedAt,
                     CreatedAt,
                     ModifiedAt
+
                 FROM {REEVALUATION_TABLE}
+
                 WHERE
                     ProspectId = ?
                     AND IsActive = 1
+
                 ORDER BY
                     COALESCE(
                         CompletedAt,
@@ -408,18 +498,25 @@ def get_reevaluation_history_sync(
                 prospect_id,
             )
 
-            reevaluation_rows = _rows_to_dict(
-                cursor
+            reevaluation_rows = (
+                _rows_to_dict(
+                    cursor
+                )
             )
 
-            # ----------------------------------------------------
-            # STEP 3: Build frontend history rows
-            # ----------------------------------------------------
+            # ====================================================
+            # STEP 3
+            # BUILD FRONTEND HISTORY
+            # ====================================================
+
             history = []
 
             for row in reevaluation_rows:
-                cycle_reevaluation_id = row.get(
-                    "reevaluationid"
+
+                cycle_reevaluation_id = (
+                    row.get(
+                        "reevaluationid"
+                    )
                 )
 
                 action_summary = (
@@ -429,19 +526,43 @@ def get_reevaluation_history_sync(
                     )
                 )
 
+                # -----------------------------------------------
+                # DATE
+                # -----------------------------------------------
+
                 history_date = (
-                    row.get("completedat")
-                    or row.get("evaluatedat")
+                    row.get(
+                        "completedat"
+                    )
+                    or row.get(
+                        "evaluatedat"
+                    )
                     or action_summary.get(
                         "action_at"
                     )
-                    or row.get("triggeredat")
-                    or row.get("createdat")
+                    or row.get(
+                        "triggeredat"
+                    )
+                    or row.get(
+                        "createdat"
+                    )
                 )
 
-                action_status = _format_status(
-                    row.get("status")
+                # -----------------------------------------------
+                # ACTION / STATUS
+                # -----------------------------------------------
+
+                action_status = (
+                    _format_status(
+                        row.get(
+                            "status"
+                        )
+                    )
                 )
+
+                # -----------------------------------------------
+                # ASSESSED BY
+                # -----------------------------------------------
 
                 assessed_by_id = (
                     action_summary.get(
@@ -455,32 +576,55 @@ def get_reevaluation_history_sync(
                     )
                 )
 
-                triggered_by_raw = row.get(
-                    "triggeredby"
+                # -----------------------------------------------
+                # TRIGGERED BY
+                # -----------------------------------------------
+
+                triggered_by_raw = (
+                    row.get(
+                        "triggeredby"
+                    )
                 )
 
                 triggered_by_id = (
-                    str(triggered_by_raw)
+                    str(
+                        triggered_by_raw
+                    )
                     if triggered_by_raw is not None
                     else None
                 )
 
                 trigger_type_raw = (
-                    row.get("triggertype")
+                    row.get(
+                        "triggertype"
+                    )
                     or ""
                 ).strip().upper()
 
                 if trigger_type_raw == "AUTO":
-                    triggered_by_name = "System"
+
+                    triggered_by_name = (
+                        "System"
+                    )
 
                     if not triggered_by_id:
-                        triggered_by_id = "SYSTEM"
+                        triggered_by_id = (
+                            "SYSTEM"
+                        )
+
                 else:
+
                     triggered_by_name = (
                         _get_user_name(
                             triggered_by_raw
                         )
                     )
+
+                # -----------------------------------------------
+                # COMMENTS
+                # Prefer action remarks.
+                # Fallback to trigger reason.
+                # -----------------------------------------------
 
                 comments = (
                     action_summary.get(
@@ -490,6 +634,10 @@ def get_reevaluation_history_sync(
                         "triggerreason"
                     )
                 )
+
+                # -----------------------------------------------
+                # HISTORY ROW
+                # -----------------------------------------------
 
                 history.append(
                     {
@@ -530,6 +678,8 @@ def get_reevaluation_history_sync(
                                 )
                             ),
 
+                        # Risk level that belonged
+                        # to this particular cycle.
                         "risk_level":
                             _format_risk_level(
                                 row.get(
@@ -548,19 +698,36 @@ def get_reevaluation_history_sync(
                     }
                 )
 
+            # ====================================================
+            # FINAL RESPONSE
+            # ====================================================
+
             return {
                 "status": True,
+
                 "message":
-                    "Reevaluation history retrieved successfully.",
+                    (
+                        "Reevaluation history "
+                        "retrieved successfully."
+                    ),
+
                 "data": {
+
                     "prospect_id":
                         prospect_id,
 
                     "vendor_account":
                         vendor_account,
 
+                    # Current selected/latest reevaluation
+                    # risk level.
+                    "current_risk_level":
+                        current_risk_level,
+
                     "history_count":
-                        len(history),
+                        len(
+                            history
+                        ),
 
                     "history":
                         history,
@@ -568,8 +735,13 @@ def get_reevaluation_history_sync(
             }
 
         finally:
+
             cursor.close()
 
+
+# ============================================================
+# ASYNC WRAPPER
+# ============================================================
 
 async def get_reevaluation_history(
     reevaluation_id: int,

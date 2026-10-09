@@ -16,15 +16,63 @@ services:
 
     restart: unless-stopped
 
-# version: '3.11.9'
+  # ==========================================================
+  # AUTOMATIC VENDOR REEVALUATION SCHEDULER
+  #
+  # Uses the SAME:
+  # - project source code
+  # - Dockerfile
+  # - .env
+  # - primary DB connection
+  #
+  # No port is required because this is not an API container.
+  # ==========================================================
+  reevaluation-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: vendor-portal-dev:latest
+
+    container_name: vendor_reevaluation_scheduler_dev
+
+    command:
+      - python
+      - -m
+      - app.schedulers.reevaluation_auto_scheduler_runner
+
+    env_file:
+      - .env
+
+    restart: unless-stopped
 
 # services:
 #   vendor-portal:
-#     build: .
-#     container_name: vendor_portal
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+
+#     image: vendor-portal-dev:latest
+
+#     container_name: vendor_portal_dev_8095
+
 #     ports:
 #       - '${PORT}:${PORT}'
-#       # - '8080:8080'
+
 #     env_file:
 #       - .env
-#     restart: always
+
+#     restart: unless-stopped
+
+# # version: '3.11.9'
+
+# # services:
+# #   vendor-portal:
+# #     build: .
+# #     container_name: vendor_portal
+# #     ports:
+# #       - '${PORT}:${PORT}'
+# #       # - '8080:8080'
+# #     env_file:
+# #       - .env
+# #     restart: always

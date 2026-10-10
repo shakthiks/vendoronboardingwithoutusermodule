@@ -808,45 +808,10 @@ PROSPECT_TABLE = (
 )
 
 
+
 # ============================================================
-# HELPERS
+# SUMMARY HELPERS
 # ============================================================
-
-def _row_to_dict(
-    cursor,
-    row,
-) -> dict[str, Any]:
-
-    if row is None:
-        return {}
-
-    columns = [
-        column[0].lower()
-        for column in cursor.description
-    ]
-
-    return dict(
-        zip(
-            columns,
-            row,
-        )
-    )
-
-
-def _format_status(
-    status: str | None,
-) -> str | None:
-
-    if not status:
-        return None
-
-    return (
-        str(status)
-        .strip()
-        .replace("_", " ")
-        .title()
-    )
-
 
 def _format_risk_level(
     risk_level: str | None,
@@ -862,6 +827,53 @@ def _format_risk_level(
     )
 
 
+def _format_home_status(
+    status: str | None,
+) -> str:
+
+    if not status:
+        return "Not Started"
+
+    value = (
+        str(status)
+        .strip()
+        .upper()
+    )
+
+    if value in {
+        "PENDING",
+        "MAIL_SENT",
+        "IN_PROGRESS",
+    }:
+        return "Awaiting Response"
+
+    if value in {
+        "SUBMITTED",
+        "UNDER_REVIEW",
+        "RESUBMITTED",
+    }:
+        return "Validation In Progress"
+
+    if value in {
+        "RETURNED",
+        "RESUBMISSION_REQUESTED",
+    }:
+        return "Returned"
+
+    if value == "COMPLETED":
+        return "Completed"
+
+    if value == "CANCELLED":
+        return "Cancelled"
+
+    return (
+        str(status)
+        .strip()
+        .replace("_", " ")
+        .title()
+    )
+
+
 def _to_date_string(
     value,
 ) -> str | None:
@@ -870,10 +882,8 @@ def _to_date_string(
         return None
 
     if hasattr(value, "date"):
-
         try:
             return value.date().isoformat()
-
         except Exception:
             pass
 
@@ -884,7 +894,7 @@ def _to_date_string(
 
 
 # ============================================================
-# MAIN SERVICE
+# MAIN SUMMARY SERVICE
 # ============================================================
 
 def get_reevaluation_summary_sync(
@@ -926,7 +936,10 @@ def get_reevaluation_summary_sync(
 
                         WHERE
                             PR.ProspectId = R.ProspectId
-                            AND PR.ReevaluationId < R.ReevaluationId
+
+                            AND PR.ReevaluationId
+                                < R.ReevaluationId
+
                             AND PR.IsActive = 1
 
                         ORDER BY
@@ -937,6 +950,7 @@ def get_reevaluation_summary_sync(
                     R.NextReevaluationDate,
 
                     R.PreviousReevaluationId,
+
                     R.ReevaluationCycle
 
                 FROM {REEVALUATION_TABLE} AS R
@@ -967,7 +981,9 @@ def get_reevaluation_summary_sync(
             )
 
             raw_status = (
-                data.get("status")
+                data.get(
+                    "status"
+                )
             )
 
             return {
@@ -1032,11 +1048,13 @@ def get_reevaluation_summary_sync(
                             )
                         ),
 
+                    # Raw DB workflow status
                     "status":
                         raw_status,
 
+                    # Same mapped status used in home UI
                     "status_display":
-                        _format_status(
+                        _format_home_status(
                             raw_status
                         ),
 
@@ -1047,11 +1065,10 @@ def get_reevaluation_summary_sync(
                 },
             }
 
-        except Exception:
-            raise
-
         finally:
+
             cursor.close()
+
 
 # ============================================================
 # ASYNC WRAPPER
@@ -1065,7 +1082,6 @@ async def get_reevaluation_summary(
         get_reevaluation_summary_sync,
         reevaluation_id,
     )
-
 #  .# app/services/reevaluation_history_service.py
 
 # from __future__ import annotations

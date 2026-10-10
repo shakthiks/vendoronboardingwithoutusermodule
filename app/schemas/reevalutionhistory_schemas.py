@@ -51,3 +51,7 @@ class ReevaluationHistoryResponse(BaseModel):
     data: Optional[
         ReevaluationHistoryData
     ] = None
+
+
+class ReevaluationSummaryRequest(BaseModel):
+    reevaluation_id: int

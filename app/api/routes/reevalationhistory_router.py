@@ -3,11 +3,11 @@
 from fastapi import APIRouter
 
 from app.schemas.reevalutionhistory_schemas import (
-    GetReevaluationHistoryRequest,
+    GetReevaluationHistoryRequest, ReevaluationSummaryRequest,ReevaluationSummaryRequest
 )
 
 from app.services.reevaluationhistory_service import (
-    get_reevaluation_history,
+    get_reevaluation_history,get_reevaluation_summary
 )
 
 
@@ -23,5 +23,23 @@ async def get_history(
 ):
 
     return await get_reevaluation_history(
+        payload.reevaluation_id
+    )
+
+
+
+
+router = APIRouter(
+    prefix="/vendor-reevaluation",
+    tags=["Vendor Reevaluation"],
+)
+
+
+@router.post("/summary")
+async def get_summary(
+    payload: ReevaluationSummaryRequest,
+):
+
+    return await get_reevaluation_summary(
         payload.reevaluation_id
     )

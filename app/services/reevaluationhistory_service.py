@@ -789,6 +789,283 @@ async def get_reevaluation_history(
         reevaluation_id,
     )
 
+
+
+
+
+# ============================================================
+# TABLES
+# ============================================================
+
+SCHEMA = settings.DB_SCHEMA
+
+REEVALUATION_TABLE = (
+    f"{SCHEMA}.HIQ_VendorReevaluation"
+)
+
+PROSPECT_TABLE = (
+    f"{SCHEMA}.d365_VendorProspect"
+)
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def _row_to_dict(
+    cursor,
+    row,
+) -> dict[str, Any]:
+
+    if row is None:
+        return {}
+
+    columns = [
+        column[0].lower()
+        for column in cursor.description
+    ]
+
+    return dict(
+        zip(
+            columns,
+            row,
+        )
+    )
+
+
+def _format_status(
+    status: str | None,
+) -> str | None:
+
+    if not status:
+        return None
+
+    return (
+        str(status)
+        .strip()
+        .replace("_", " ")
+        .title()
+    )
+
+
+def _format_risk_level(
+    risk_level: str | None,
+) -> str | None:
+
+    if not risk_level:
+        return None
+
+    return (
+        str(risk_level)
+        .strip()
+        .title()
+    )
+
+
+def _to_date_string(
+    value,
+) -> str | None:
+
+    if value is None:
+        return None
+
+    if hasattr(value, "date"):
+
+        try:
+            return value.date().isoformat()
+
+        except Exception:
+            pass
+
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+
+    return str(value)
+
+
+# ============================================================
+# MAIN SERVICE
+# ============================================================
+
+def get_reevaluation_summary_sync(
+    reevaluation_id: int,
+) -> dict[str, Any]:
+
+    with get_connection() as conn:
+
+        cursor = conn.cursor()
+
+        try:
+
+            cursor.execute(
+                f"""
+                SELECT TOP 1
+
+                    R.ReevaluationId,
+                    R.ReevaluationNo,
+                    R.ProspectId,
+                    R.VendorAccount,
+
+                    P.Email,
+
+                    R.RiskLevel,
+                    R.Status,
+
+                    (
+                        SELECT TOP 1
+
+                            COALESCE(
+                                PR.CompletedAt,
+                                PR.EvaluatedAt,
+                                PR.SubmittedAt,
+                                PR.TriggeredAt,
+                                PR.CreatedAt
+                            )
+
+                        FROM {REEVALUATION_TABLE} AS PR
+
+                        WHERE
+                            PR.ProspectId = R.ProspectId
+                            AND PR.ReevaluationId < R.ReevaluationId
+                            AND PR.IsActive = 1
+
+                        ORDER BY
+                            PR.ReevaluationId DESC
+
+                    ) AS LastReevaluation,
+
+                    R.NextReevaluationDate,
+
+                    R.PreviousReevaluationId,
+                    R.ReevaluationCycle
+
+                FROM {REEVALUATION_TABLE} AS R
+
+                LEFT JOIN {PROSPECT_TABLE} AS P
+                    ON P.ProspectId = R.ProspectId
+
+                WHERE
+                    R.ReevaluationId = ?
+                    AND R.IsActive = 1;
+                """,
+                reevaluation_id,
+            )
+
+            row = cursor.fetchone()
+
+            if not row:
+
+                return {
+                    "status": False,
+                    "message": "Reevaluation not found.",
+                    "data": None,
+                }
+
+            data = _row_to_dict(
+                cursor,
+                row,
+            )
+
+            raw_status = (
+                data.get("status")
+            )
+
+            return {
+                "status": True,
+
+                "message":
+                    (
+                        "Reevaluation summary "
+                        "retrieved successfully."
+                    ),
+
+                "data": {
+
+                    "reevaluation_id":
+                        data.get(
+                            "reevaluationid"
+                        ),
+
+                    "reevaluation_no":
+                        data.get(
+                            "reevaluationno"
+                        ),
+
+                    "reevaluation_cycle":
+                        data.get(
+                            "reevaluationcycle"
+                        ),
+
+                    "vendor_account":
+                        data.get(
+                            "vendoraccount"
+                        ),
+
+                    "prospect_id":
+                        data.get(
+                            "prospectid"
+                        ),
+
+                    "email":
+                        data.get(
+                            "email"
+                        ),
+
+                    "risk_level":
+                        _format_risk_level(
+                            data.get(
+                                "risklevel"
+                            )
+                        ),
+
+                    "last_reevaluation":
+                        _to_date_string(
+                            data.get(
+                                "lastreevaluation"
+                            )
+                        ),
+
+                    "next_reevaluation":
+                        _to_date_string(
+                            data.get(
+                                "nextreevaluationdate"
+                            )
+                        ),
+
+                    "status":
+                        raw_status,
+
+                    "status_display":
+                        _format_status(
+                            raw_status
+                        ),
+
+                    "previous_reevaluation_id":
+                        data.get(
+                            "previousreevaluationid"
+                        ),
+                },
+            }
+
+        except Exception:
+            raise
+
+        finally:
+            cursor.close()
+
+# ============================================================
+# ASYNC WRAPPER
+# ============================================================
+
+async def get_reevaluation_summary(
+    reevaluation_id: int,
+):
+
+    return await run_in_threadpool(
+        get_reevaluation_summary_sync,
+        reevaluation_id,
+    )
+
 #  .# app/services/reevaluation_history_service.py
 
 # from __future__ import annotations

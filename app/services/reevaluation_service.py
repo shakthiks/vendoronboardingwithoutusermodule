@@ -86,7 +86,7 @@ def get_vendor_reevaluation_home_sync():
             VP.ProspectId,
 
             VP.Name AS VendorName,
-            LR.ToEmail AS Email,
+            VP.Email AS Email,
 
 
             -- ==========================================

@@ -105,7 +105,16 @@ def _rows_to_dict(
         )
         for row in cursor.fetchall()
     ]
+def _format_risk_level(value):
+    if value is None:
+        return None
 
+    value = str(value).strip()
+
+    if not value:
+        return None
+
+    return value.capitalize()
 def _complete_reevaluation(
     cursor,
     reevaluation_id: int,
@@ -315,9 +324,11 @@ def _get_risk_details(
                     "isapplicable"
                 ),
 
-            "risk_level":
-                row.get(
-                    "risklevel"
+           "risk_level":
+                _format_risk_level(
+                    row.get(
+                        "risklevel"
+                    )
                 ),
 
             "remarks":

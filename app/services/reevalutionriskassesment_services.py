@@ -1403,6 +1403,19 @@ def save_reevaluation_risk_assessment_sync(
 
             if not assessment:
 
+                # RETURNED is only valid after a previous DRAFT save.
+                # Do not create a new empty risk assessment on return.
+                if action == "RETURNED":
+
+                    return {
+                        "status": False,
+                        "message": (
+                            "Risk assessment must be saved as DRAFT "
+                            "before it can be returned."
+                        ),
+                        "data": None,
+                    }
+
                 risk_assessment_id = (
                     _create_risk_assessment(
                         cursor=secondary_cursor,
@@ -1447,6 +1460,14 @@ def save_reevaluation_risk_assessment_sync(
                     ]
                 )
 
+                # RETURNED must keep the previously saved
+                # overall risk level unchanged.
+                risk_level_to_save = (
+                    None
+                    if action == "RETURNED"
+                    else overall_risk_level
+                )
+
                 _update_risk_assessment(
                     cursor=secondary_cursor,
                     risk_assessment_id=
@@ -1455,24 +1476,33 @@ def save_reevaluation_risk_assessment_sync(
                     action_by=payload.action_by,
                     comments=payload.comments,
                     overall_risk_level=
-                        overall_risk_level,
+                        risk_level_to_save,
                 )
 
 
             # =================================================
             # SAVE RISK DETAIL ROWS
+            #
+            # DRAFT / COMPLETED:
+            #   save latest values from frontend
+            #
+            # RETURNED:
+            #   frontend may send details=[]
+            #   keep the previously saved draft details unchanged
             # =================================================
 
-            _save_risk_details(
-                cursor=secondary_cursor,
-                risk_assessment_id=
-                    risk_assessment_id,
-                prospect_id=
-                    reevaluation[
-                        "prospectid"
-                    ],
-                details=payload.details,
-            )
+            if action != "RETURNED":
+
+                _save_risk_details(
+                    cursor=secondary_cursor,
+                    risk_assessment_id=
+                        risk_assessment_id,
+                    prospect_id=
+                        reevaluation[
+                            "prospectid"
+                        ],
+                    details=payload.details,
+                )
 
 
             # =================================================

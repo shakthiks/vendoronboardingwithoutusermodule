@@ -39,7 +39,7 @@ services:
     command:
       - python
       - -m
-      - app.schedulers.reevaluation_auto_scheduler_runner
+      - app.schedulers.reevaluation_auto_scheduler_runners
 
     env_file:
       - .env

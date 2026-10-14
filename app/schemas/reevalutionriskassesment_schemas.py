@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 # ============================================================
 
 class GetReevaluationRiskAssessmentRequest(BaseModel):
-
     reevaluation_id: int
 
 
@@ -19,15 +18,10 @@ class GetReevaluationRiskAssessmentRequest(BaseModel):
 # ============================================================
 
 class ReevaluationRiskAssessmentDetail(BaseModel):
-
     process_name: str
-
     identified_risk: Optional[str] = None
-
     is_applicable: Optional[bool] = None
-
     risk_level: Optional[str] = None
-
     remarks: Optional[str] = None
 
 
@@ -39,33 +33,18 @@ class ReevaluationRiskAssessmentDetail(BaseModel):
 # RETURNED
 # COMPLETED
 #
-# overall_risk_level is OPTIONAL for every action.
+# Overall risk level is intentionally NOT part of this API.
+# Risk level is handled only at detail-row level.
 # ============================================================
 
 class SaveReevaluationRiskAssessmentRequest(BaseModel):
-
     reevaluation_id: int
-
     action: str
-
-    # OPTIONAL
-    # Allowed when supplied:
-    # LOW
-    # MEDIUM
-    # ELEVATED
-    # HIGH
-    # CRITICAL
-    overall_risk_level: Optional[str] = None
-
     comments: Optional[str] = None
-
     action_by: str
-
     details: List[
         ReevaluationRiskAssessmentDetail
-    ] = Field(
-        default_factory=list
-    )
+    ] = Field(default_factory=list)
 
 
 # ============================================================
@@ -73,22 +52,14 @@ class SaveReevaluationRiskAssessmentRequest(BaseModel):
 # ============================================================
 
 class SendReturnEmailRequest(BaseModel):
-
     reevaluation_id: int
-
     subject: str
-
     body: str
-
     to_email: Optional[str] = None
-
-    cc_emails: List[str] = Field(
-        default_factory=list
-    )
-
+    cc_emails: List[str] = Field(default_factory=list)
     return_reason: str
-
     action_by: str
+
 
 
 # # app/schemas/reevalutionriskassesment_schemas.py

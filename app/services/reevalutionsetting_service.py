@@ -157,9 +157,18 @@ def _months_to_ui(
     }
 
 
-# ============================================================
-# GET COMPLETE SETTINGS PAGE
-# ============================================================
+
+def _format_notification_type(value: str | None) -> str:
+    if not value:
+        return ""
+
+    return (
+        str(value)
+        .strip()
+        .replace("_", " ")
+        .title()
+    )
+
 
 def get_reevaluation_settings_sync():
 
@@ -215,7 +224,6 @@ def get_reevaluation_settings_sync():
 
             reevaluation_periods = []
 
-
             for row in risk_rows:
 
                 months = int(
@@ -268,11 +276,8 @@ def get_reevaluation_settings_sync():
                 f"""
                 SELECT
                     NotificationSettingId,
-
                     NotificationType,
-
                     NotifyBeforeValue,
-
                     NotifyBeforeUnit
 
                 FROM {NOTIFICATION_TABLE}
@@ -290,6 +295,41 @@ def get_reevaluation_settings_sync():
                 )
             )
 
+            notification_settings = []
+
+            for row in notification_rows:
+
+                notification_settings.append(
+                    {
+                        "notificationsettingid":
+                            row.get(
+                                "notificationsettingid"
+                            ),
+
+                        "notificationtype":
+                            row.get(
+                                "notificationtype"
+                            ),
+
+                        "notificationtypedisplay":
+                            _format_notification_type(
+                                row.get(
+                                    "notificationtype"
+                                )
+                            ),
+
+                        "notifybeforevalue":
+                            row.get(
+                                "notifybeforevalue"
+                            ),
+
+                        "notifybeforeunit":
+                            row.get(
+                                "notifybeforeunit"
+                            ),
+                    }
+                )
+
 
             # =================================================
             # EMAIL CC RECIPIENTS
@@ -299,9 +339,7 @@ def get_reevaluation_settings_sync():
                 f"""
                 SELECT
                     CCMasterId,
-
                     DisplayName,
-
                     EmailAddress
 
                 FROM {CC_MASTER_TABLE}
@@ -313,8 +351,10 @@ def get_reevaluation_settings_sync():
                 """
             )
 
-            recipients = _rows_to_dict(
-                cursor
+            recipients = (
+                _rows_to_dict(
+                    cursor
+                )
             )
 
 
@@ -325,13 +365,9 @@ def get_reevaluation_settings_sync():
             cursor.execute(
                 f"""
                 SELECT TOP 1
-
                     TemplateId,
-
                     TemplateName,
-
                     Subject,
-
                     EmailBody
 
                 FROM {EMAIL_TEMPLATE_TABLE}
@@ -350,10 +386,12 @@ def get_reevaluation_settings_sync():
             )
 
 
-            return {
+            # =================================================
+            # RESPONSE
+            # =================================================
 
-                "status":
-                    True,
+            return {
+                "status": True,
 
                 "message":
                     "Reevaluation settings retrieved successfully.",
@@ -364,7 +402,7 @@ def get_reevaluation_settings_sync():
                         reevaluation_periods,
 
                     "notification_settings":
-                        notification_rows,
+                        notification_settings,
 
                     "email_recipients":
                         recipients,
@@ -385,7 +423,6 @@ async def get_reevaluation_settings():
     return await run_in_threadpool(
         get_reevaluation_settings_sync
     )
-
 
 # ============================================================
 # UPDATE ALL REEVALUATION PERIODS

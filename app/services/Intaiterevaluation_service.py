@@ -727,7 +727,6 @@ def _update_mail_failure(
 # ============================================================
 # MAIN SYNC FUNCTION
 # ============================================================
-
 def initiate_vendor_reevaluation_sync(
     payload,
 ):
@@ -805,15 +804,17 @@ def initiate_vendor_reevaluation_sync(
             # =================================================
             # EMAIL MODE
             #
-            # DEFAULT_TEMPLATE
-            # OR
-            # BATCH_OVERRIDE
+            # use_override = FALSE
+            #     -> use frontend subject/body
+            #
+            # use_override = TRUE
+            #     -> use Settings email template
             # =================================================
 
-            use_batch_override = False
+            use_settings_template = False
 
             email_source = (
-                "DEFAULT_TEMPLATE"
+                "FRONTEND_BODY"
             )
 
             subject_template = ""
@@ -830,65 +831,16 @@ def initiate_vendor_reevaluation_sync(
 
             if email_override:
 
-                use_batch_override = bool(
+                use_settings_template = bool(
                     email_override.use_override
                 )
 
 
             # =================================================
-            # BATCH OVERRIDE
+            # TRUE -> USE SETTINGS TEMPLATE
             # =================================================
 
-            if use_batch_override:
-
-                subject_template = (
-                    email_override.subject
-                    or ""
-                ).strip()
-
-
-                body_template = (
-                    email_override.body
-                    or ""
-                ).strip()
-
-
-                if not subject_template:
-
-                    return {
-                        "status": False,
-
-                        "message":
-                            "Subject is required when "
-                            "batch email override is enabled.",
-
-                        "data": None,
-                    }
-
-
-                if not body_template:
-
-                    return {
-                        "status": False,
-
-                        "message":
-                            "Email body is required when "
-                            "batch email override is enabled.",
-
-                        "data": None,
-                    }
-
-
-                email_source = (
-                    "BATCH_OVERRIDE"
-                )
-
-
-            # =================================================
-            # DEFAULT SETTINGS TEMPLATE
-            # =================================================
-
-            else:
+            if use_settings_template:
 
                 template = (
                     _get_active_email_template(
@@ -915,7 +867,7 @@ def initiate_vendor_reevaluation_sync(
                         "subject"
                     )
                     or ""
-                )
+                ).strip()
 
 
                 body_template = (
@@ -923,6 +875,99 @@ def initiate_vendor_reevaluation_sync(
                         "emailbody"
                     )
                     or ""
+                ).strip()
+
+
+                if not subject_template:
+
+                    return {
+                        "status": False,
+
+                        "message":
+                            "Email subject is empty "
+                            "in Settings.",
+
+                        "data": None,
+                    }
+
+
+                if not body_template:
+
+                    return {
+                        "status": False,
+
+                        "message":
+                            "Email body is empty "
+                            "in Settings.",
+
+                        "data": None,
+                    }
+
+
+                email_source = (
+                    "SETTINGS_TEMPLATE"
+                )
+
+
+            # =================================================
+            # FALSE -> USE FRONTEND SUBJECT/BODY
+            # =================================================
+
+            else:
+
+                if email_override is None:
+
+                    return {
+                        "status": False,
+
+                        "message":
+                            "Email subject and body "
+                            "are required.",
+
+                        "data": None,
+                    }
+
+
+                subject_template = (
+                    email_override.subject
+                    or ""
+                ).strip()
+
+
+                body_template = (
+                    email_override.body
+                    or ""
+                ).strip()
+
+
+                if not subject_template:
+
+                    return {
+                        "status": False,
+
+                        "message":
+                            "Subject is required when "
+                            "using frontend email content.",
+
+                        "data": None,
+                    }
+
+
+                if not body_template:
+
+                    return {
+                        "status": False,
+
+                        "message":
+                            "Email body is required when "
+                            "using frontend email content.",
+
+                        "data": None,
+                    }
+
+
+                email_source = (
+                    "FRONTEND_BODY"
                 )
 
 
@@ -1193,15 +1238,31 @@ def initiate_vendor_reevaluation_sync(
                     # ==========================================
                     # BUILD FINAL EMAIL
                     # ==========================================
+
                     subject, body = build_vendor_email(
-                        subject_template=subject_template,
-                        body_template=body_template,
-                        vendor_name=vendor.get("vendorname") or "",
-                        reevaluation_id=reevaluation_id,
-                        reevaluation_no=reevaluation_no,
-                        vendor_account=vendor_account,
+
+                        subject_template=
+                            subject_template,
+
+                        body_template=
+                            body_template,
+
+                        vendor_name=
+                            vendor.get(
+                                "vendorname"
+                            )
+                            or "",
+
+                        reevaluation_id=
+                            reevaluation_id,
+
+                        reevaluation_no=
+                            reevaluation_no,
+
+                        vendor_account=
+                            vendor_account,
                     )
-            
+
 
                     # ==========================================
                     # SEND MAIL
@@ -1534,11 +1595,6 @@ def initiate_vendor_reevaluation_sync(
                 results,
         },
     }
-
-
-# ============================================================
-# ASYNC API WRAPPER
-# ============================================================
 
 async def initiate_vendor_reevaluation(
     payload,

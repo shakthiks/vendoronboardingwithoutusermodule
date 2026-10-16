@@ -196,7 +196,7 @@ def _get_notification_setting(
 
         WHERE
             UPPER(NotificationType)
-                = 'REEVALUATION_DUE'
+                = 'REVALUATION_DUE'
 
             AND IsActive = 1
 

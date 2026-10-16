@@ -731,7 +731,7 @@ def update_reevaluation_risk_level_sync(
 
                     "message":
                         (
-                            "Active REEVALUATION_DUE "
+                            "Active REVALUATION_DUE "
                             "notification setting "
                             "not found."
                         ),

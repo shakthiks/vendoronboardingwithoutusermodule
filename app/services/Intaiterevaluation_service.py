@@ -51,6 +51,10 @@ VENDOR_REEVALUATION_TEMPLATE_TABLE = (
     f"{SCHEMA}.HIQ_VendorReevaluationEmailTemplate"
 )
 
+VENDOR_REEVALUATION_EMAIL_HISTORY_TABLE = (
+    f"{SCHEMA}.HIQ_VendorReevaluationEmailHistory"
+)
+
 
 # ============================================================
 # CURSOR ROW → DICTIONARY
@@ -352,7 +356,8 @@ def _get_previous_reevaluation(
             ReevaluationNo,
             ReevaluationCycle,
             PreviousReevaluationId,
-            Status
+            Status,
+            ToEmail
 
         FROM {VENDOR_REEVALUATION_TABLE}
 
@@ -375,6 +380,94 @@ def _get_previous_reevaluation(
         cursor,
         row,
     )
+
+
+# ============================================================
+# SYNC EXISTING REEVALUATION EMAIL WITH CURRENT VENDOR MASTER
+# ============================================================
+
+def _sync_reevaluation_email(
+    cursor,
+    reevaluation_id: int,
+    prospect_id: str | None,
+    vendor_account: str,
+    old_email: str | None,
+    new_email: str,
+    changed_by: str,
+) -> bool:
+
+    old_email_clean = str(old_email or "").strip()
+    new_email_clean = str(new_email or "").strip()
+
+    if not new_email_clean:
+        return False
+
+    # Email comparison is case-insensitive.
+    if old_email_clean.lower() == new_email_clean.lower():
+        return False
+
+    # --------------------------------------------------------
+    # Store immutable change history first.
+    # --------------------------------------------------------
+    cursor.execute(
+        f"""
+        INSERT INTO {VENDOR_REEVALUATION_EMAIL_HISTORY_TABLE}
+        (
+            ReevaluationId,
+            ProspectId,
+            VendorAccount,
+            OldEmail,
+            NewEmail,
+            ChangeSource,
+            ChangedBy,
+            ChangedAt
+        )
+        VALUES
+        (
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            'VENDOR_MASTER',
+            ?,
+            SYSDATETIME()
+        );
+        """,
+        reevaluation_id,
+        prospect_id,
+        vendor_account,
+        old_email_clean or None,
+        new_email_clean,
+        changed_by,
+    )
+
+    # --------------------------------------------------------
+    # Keep the active reevaluation record aligned with the
+    # current vendor master email used for the resend.
+    # --------------------------------------------------------
+    cursor.execute(
+        f"""
+        UPDATE {VENDOR_REEVALUATION_TABLE}
+        SET
+            ToEmail = ?,
+            ModifiedAt = SYSDATETIME(),
+            ModifiedBy = ?
+        WHERE
+            ReevaluationId = ?
+            AND IsActive = 1;
+        """,
+        new_email_clean,
+        changed_by,
+        reevaluation_id,
+    )
+
+    if cursor.rowcount == 0:
+        raise Exception(
+            "Failed to update reevaluation email address."
+        )
+
+    return True
 
 
 def _create_reevaluation(
@@ -868,6 +961,7 @@ def initiate_vendor_reevaluation_sync(
                 cycle = None
                 reuse_existing = False
                 current_status = "PENDING"
+                email_changed = False
 
                 try:
                     # ==========================================
@@ -1071,6 +1165,37 @@ def initiate_vendor_reevaluation_sync(
                         conn.commit()
 
                     # ==========================================
+                    # SYNC CURRENT MASTER EMAIL FOR REUSED CYCLE
+                    #
+                    # New cycles already store vendor["toemail"]
+                    # during _create_reevaluation().
+                    # ==========================================
+
+                    if reuse_existing:
+
+                        old_reevaluation_email = (
+                            previous.get("toemail")
+                            if previous
+                            else None
+                        )
+
+                        email_changed = _sync_reevaluation_email(
+                            cursor=cursor,
+                            reevaluation_id=reevaluation_id,
+                            prospect_id=vendor.get("prospectid"),
+                            vendor_account=vendor_account,
+                            old_email=old_reevaluation_email,
+                            new_email=to_email,
+                            changed_by=payload.triggered_by,
+                        )
+
+                        # Persist the email synchronization before
+                        # attempting SMTP. The master email change
+                        # remains valid even if email sending fails.
+                        if email_changed:
+                            conn.commit()
+
+                    # ==========================================
                     # BUILD FINAL EMAIL
                     # ==========================================
 
@@ -1155,6 +1280,8 @@ def initiate_vendor_reevaluation_sync(
                                 "reevaluation_no": reevaluation_no,
                                 "reevaluation_cycle": cycle,
                                 "reused_existing_cycle": reuse_existing,
+                                "email_changed": email_changed,
+                                "to_email": to_email,
                                 "mail_status": "SENT",
                                 "email_source": email_source,
                                 "message": success_message,
@@ -1217,6 +1344,8 @@ def initiate_vendor_reevaluation_sync(
                                 "reevaluation_no": reevaluation_no,
                                 "reevaluation_cycle": cycle,
                                 "reused_existing_cycle": reuse_existing,
+                                "email_changed": email_changed,
+                                "to_email": to_email,
                                 "mail_status": "FAILED",
                                 "email_source": email_source,
                                 "message": failure_message,
